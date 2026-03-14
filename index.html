@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Humans, Giants, Zombies, Robots, Aliens</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Title Screen -->
+    <div id="title-screen" class="screen active">
+        <div class="title-container">
+            <h1 class="game-title">
+                <span class="title-humans">HUMANS</span>
+                <span class="title-giants">GIANTS</span>
+                <span class="title-zombies">ZOMBIES</span>
+                <span class="title-robots">ROBOTS</span>
+                <span class="title-aliens">ALIENS</span>
+            </h1>
+            <p class="subtitle">Tactical PvP Combat</p>
+            <button id="btn-local-pvp" class="menu-btn">Local PvP</button>
+            <button id="btn-vs-ai" class="menu-btn">vs AI (Coming Soon)</button>
+        </div>
+    </div>
+
+    <!-- Faction Select Screen -->
+    <div id="faction-select-screen" class="screen">
+        <h2 id="faction-select-title">Player 1 - Choose Your Faction</h2>
+        <div class="faction-grid">
+            <div class="faction-card" data-faction="humans">
+                <div class="faction-icon humans-icon"></div>
+                <h3>Humans</h3>
+                <p>Balanced military with versatile units, vehicles, and tech.</p>
+            </div>
+            <div class="faction-card" data-faction="giants">
+                <div class="faction-icon giants-icon"></div>
+                <h3>Giants</h3>
+                <p>Massive units that dominate the board with raw power.</p>
+            </div>
+            <div class="faction-card" data-faction="zombies">
+                <div class="faction-icon zombies-icon"></div>
+                <h3>Zombies</h3>
+                <p>Endless horde that infects and overwhelms enemies.</p>
+            </div>
+            <div class="faction-card" data-faction="robots">
+                <div class="faction-icon robots-icon"></div>
+                <h3>Robots</h3>
+                <p>Calculated machines that hack, mirror, and deceive.</p>
+            </div>
+            <div class="faction-card" data-faction="aliens">
+                <div class="faction-icon aliens-icon"></div>
+                <h3>Aliens</h3>
+                <p>Masters of space with lasers, warps, and illusions.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gold Wager Screen -->
+    <div id="wager-screen" class="screen">
+        <h2>Set Gold Wager</h2>
+        <div class="wager-container">
+            <p>Each player starts with <strong>500 Gold</strong></p>
+            <label for="wager-input">Wager Amount:</label>
+            <input type="number" id="wager-input" min="10" max="500" value="100" step="10">
+            <p class="wager-note">Winner takes all wagered gold!</p>
+            <button id="btn-confirm-wager" class="menu-btn">Confirm Wager</button>
+        </div>
+    </div>
+
+    <!-- Team Builder Screen -->
+    <div id="team-builder-screen" class="screen">
+        <div class="builder-header">
+            <h2 id="builder-title">Player 1 - Build Your Team</h2>
+            <div class="builder-stats">
+                <span id="builder-gold">Gold: <strong>500</strong></span>
+                <span id="builder-weight">Deployment: <strong>0 / 50</strong></span>
+            </div>
+        </div>
+        <div class="builder-layout">
+            <div class="unit-roster" id="unit-roster"></div>
+            <div class="selected-team">
+                <h3>Your Army</h3>
+                <div id="team-list"></div>
+                <button id="btn-confirm-team" class="menu-btn">Confirm Team</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Deployment Screen -->
+    <div id="deployment-screen" class="screen">
+        <div class="deployment-header">
+            <h2 id="deployment-title">Player 1 - Deploy Your Units</h2>
+            <p>Click a unit from your roster, then click a square on your side of the board.</p>
+        </div>
+        <div class="deployment-layout">
+            <canvas id="deploy-canvas" width="1200" height="800"></canvas>
+            <div class="deploy-roster" id="deploy-roster"></div>
+        </div>
+        <button id="btn-confirm-deploy" class="menu-btn">Confirm Deployment</button>
+    </div>
+
+    <!-- Game Screen -->
+    <div id="game-screen" class="screen">
+        <div class="game-hud">
+            <div class="hud-left">
+                <span id="hud-player">Player 1's Turn</span>
+                <span id="hud-faction"></span>
+                <span id="hud-moves-left"></span>
+            </div>
+            <div class="hud-center">
+                <span id="hud-turn">Turn 1</span>
+            </div>
+            <div class="hud-right">
+                <button id="btn-end-turn" class="hud-btn">End Turn</button>
+            </div>
+        </div>
+        <div class="game-layout">
+            <canvas id="game-canvas" width="1200" height="800"></canvas>
+            <div class="game-sidebar">
+                <div id="unit-info-panel" class="info-panel">
+                    <h3>Select a Unit</h3>
+                </div>
+                <div id="action-panel" class="action-panel"></div>
+                <div id="game-log" class="game-log"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Victory Screen -->
+    <div id="victory-screen" class="screen">
+        <div class="victory-container">
+            <h1 id="victory-text">Player 1 Wins!</h1>
+            <p id="victory-gold"></p>
+            <button id="btn-play-again" class="menu-btn">Play Again</button>
+        </div>
+    </div>
+
+    <script src="js/units.js"></script>
+    <script src="js/board.js"></script>
+    <script src="js/renderer.js"></script>
+    <script src="js/game.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
