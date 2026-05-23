@@ -21,67 +21,67 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    /* Base — deep navy-black matching Sin Miedo Capital logo */
-    .stApp { background-color: #070b18; color: #eef2ff; }
-    section[data-testid="stSidebar"] { background-color: #0a1020; }
+    /* Light theme — off-white background, deep navy text, royal blue accents */
+    .stApp { background-color: #f5f8ff; color: #0a1428; }
+    section[data-testid="stSidebar"] { background-color: #eef3ff; }
 
     /* Layout */
     .block-container { padding-top: 1rem; padding-bottom: 2rem; max-width: 1400px; }
 
     /* Headers */
-    h1, h2, h3 { color: #eef2ff !important; }
-    h2 { font-size: 1.1rem !important; border-bottom: 1px solid #162040; padding-bottom: 4px; }
+    h1, h2, h3 { color: #0a1428 !important; }
+    h2 { font-size: 1.1rem !important; border-bottom: 1px solid #c5d5ee; padding-bottom: 4px; }
 
     /* Alerts / info boxes */
-    .stAlert { background-color: #0c1428 !important; border-radius: 6px; }
+    .stAlert { background-color: #eef3ff !important; border-radius: 6px; }
 
     /* DataFrames */
-    .stDataFrame { background: #0c1428 !important; }
-    [data-testid="stDataFrame"] table { background: #0c1428 !important; color: #eef2ff !important; }
+    .stDataFrame { background: #ffffff !important; }
+    [data-testid="stDataFrame"] table { background: #ffffff !important; color: #0a1428 !important; }
     [data-testid="stDataFrame"] th {
-        background: #111d38 !important; color: #4d8fff !important;
+        background: #1a3060 !important; color: #ffffff !important;
         font-size: 0.8em !important; text-transform: uppercase; letter-spacing: 0.05em;
     }
     [data-testid="stDataFrame"] td { font-size: 0.88em !important; }
 
     /* Expander */
-    .streamlit-expanderHeader { background-color: #0c1428 !important; color: #eef2ff !important; }
+    .streamlit-expanderHeader { background-color: #eef3ff !important; color: #0a1428 !important; }
 
     /* Metric labels */
-    label[data-testid="stMetricLabel"] { color: #7a9cc7 !important; font-size: 0.8em !important; }
+    label[data-testid="stMetricLabel"] { color: #5577aa !important; font-size: 0.8em !important; }
 
     /* Selectbox */
-    .stSelectbox select { background: #111d38 !important; color: #eef2ff !important; }
+    .stSelectbox select { background: #ffffff !important; color: #0a1428 !important; }
 
     /* Text area */
-    textarea { background: #0c1428 !important; color: #eef2ff !important; border-color: #162040 !important; }
+    textarea { background: #ffffff !important; color: #0a1428 !important; border-color: #c5d5ee !important; }
 
     /* Number input */
-    input[type="number"] { background: #0c1428 !important; color: #eef2ff !important; }
+    input[type="number"] { background: #ffffff !important; color: #0a1428 !important; }
 
     /* Dividers */
-    hr { border-color: #162040 !important; }
+    hr { border-color: #c5d5ee !important; }
 
     /* Caption */
-    .stCaption { color: #4d6d9a !important; }
+    .stCaption { color: #5577aa !important; }
 
     /* Button */
     .stButton button {
-        background-color: #111d38 !important;
-        color: #4d8fff !important;
-        border: 1px solid #162040 !important;
+        background-color: #1a3060 !important;
+        color: #ffffff !important;
+        border: 1px solid #1a3060 !important;
         border-radius: 4px !important;
         font-size: 0.85em !important;
     }
     .stButton button:hover {
-        background-color: #1a3060 !important;
-        border-color: #4d8fff !important;
+        background-color: #2d5090 !important;
+        border-color: #2d5090 !important;
     }
 
     /* Scrollbar */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #070b18; }
-    ::-webkit-scrollbar-thumb { background: #162040; border-radius: 3px; }
+    ::-webkit-scrollbar-track { background: #f5f8ff; }
+    ::-webkit-scrollbar-thumb { background: #c5d5ee; border-radius: 3px; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -114,8 +114,8 @@ hcol1, hcol2, hcol3 = st.columns([3, 1, 1])
 with hcol1:
     st.markdown(
         f'<div style="padding:4px 0;">'
-        f'<span style="font-size:1.4em;font-weight:700;color:#74b9ff;">Sin Miedo Capital</span>'
-        f'<span style="color:#636e72;font-size:0.9em;"> &nbsp;MCL / MES Futures Dashboard</span>'
+        f'<span style="font-size:1.4em;font-weight:700;color:#1a3060;">Sin Miedo Capital</span>'
+        f'<span style="color:#5577aa;font-size:0.9em;"> &nbsp;MCL / MES Futures Dashboard</span>'
         f'</div>'
         f'<div style="color:#636e72;font-size:0.8em;">{data["session_date"]}</div>',
         unsafe_allow_html=True,
@@ -238,7 +238,7 @@ with manual_col:
 
 st.markdown(
     '<div style="color:#2d2d4e;font-size:0.75em;text-align:center;padding-top:12px;">'
-    'Sin Miedo Capital — For internal use only. Not financial advice. Data may be delayed.'
+    '<span style="color:#5577aa;">Sin Miedo Capital — For internal use only. Not financial advice. Data may be delayed.</span>'
     '</div>',
     unsafe_allow_html=True,
 )

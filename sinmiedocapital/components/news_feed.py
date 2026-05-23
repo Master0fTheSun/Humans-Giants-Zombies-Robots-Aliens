@@ -37,8 +37,8 @@ def render_news_feed(news: list):
 
         st.markdown(
             f'<div style="border-left:3px solid {color};padding:6px 12px;margin-bottom:6px;'
-            f'background:#0c1428;border-radius:0 4px 4px 0;">'
-            f'<span style="color:#7a9cc7;font-size:0.78em;">{item["time"]}</span>'
+            f'background:#f0f5ff;border-radius:0 4px 4px 0;">'
+            f'<span style="color:#5577aa;font-size:0.78em;">{item["time"]}</span>'
             f'&nbsp;&nbsp;<span style="color:{contract_color};font-size:0.78em;font-weight:700;">{contract_tag}</span>'
             f'&nbsp;&nbsp;{sentiment_badge(sentiment)}'
             f'<br><span style="font-size:0.9em;">{item["headline"]}</span>'

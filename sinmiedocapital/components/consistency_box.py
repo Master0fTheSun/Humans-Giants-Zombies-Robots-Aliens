@@ -19,13 +19,13 @@ def render_consistency_box(contract: dict):
     col_dash, col_you = st.columns([1, 1])
     with col_dash:
         st.markdown(
-            f'<div style="font-size:0.82em;color:#7a9cc7;margin-bottom:2px;">Dashboard says</div>'
+            f'<div style="font-size:0.82em;color:#5577aa;margin-bottom:2px;">Dashboard says</div>'
             f'<div style="font-size:1.15em;font-weight:700;color:{auto_color};">{auto_cat}</div>',
             unsafe_allow_html=True,
         )
     with col_you:
         st.markdown(
-            '<div style="font-size:0.82em;color:#7a9cc7;margin-bottom:2px;">Your bias</div>',
+            '<div style="font-size:0.82em;color:#5577aa;margin-bottom:2px;">Your bias</div>',
             unsafe_allow_html=True,
         )
         user_bias = st.selectbox(
@@ -54,10 +54,10 @@ def render_consistency_box(contract: dict):
         detail = "Partial alignment. Wait for a clear catalyst or price acceptance before committing."
 
     st.markdown(
-        f'<div style="background:#0c1428;border-left:3px solid {color};'
+        f'<div style="background:#f0f5ff;border-left:3px solid {color};'
         f'padding:8px 12px;border-radius:4px;margin-top:6px;">'
         f'<span style="color:{color};font-weight:700;">{icon} {msg}</span><br>'
-        f'<span style="color:#7a9cc7;font-size:0.82em;">{detail}</span>'
+        f'<span style="color:#5577aa;font-size:0.82em;">{detail}</span>'
         f'</div>',
         unsafe_allow_html=True,
     )
