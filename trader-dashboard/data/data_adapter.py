@@ -23,7 +23,10 @@ def get_dashboard_data() -> dict:
 def _get_live_data() -> dict:
     provider = config.LIVE_DATA_PROVIDER
 
-    if provider == "polygon":
+    if provider == "yfinance":
+        from data.yfinance_adapter import get_yfinance_data
+        return get_yfinance_data()
+    elif provider == "polygon":
         return _fetch_polygon()
     elif provider == "tradovate":
         return _fetch_tradovate()

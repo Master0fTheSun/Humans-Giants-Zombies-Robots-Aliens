@@ -1,8 +1,9 @@
 # DATA_MODE: "manual" uses mock_data.py; "live" calls the configured API adapter.
-DATA_MODE = "manual"
+DATA_MODE = "live"
 
 # When DATA_MODE == "live", set the provider and credentials here.
-LIVE_DATA_PROVIDER = "none"   # options: "none" | "polygon" | "tradovate" | "alpaca"
+# "yfinance" is free with no API key — ~15min delayed data.
+LIVE_DATA_PROVIDER = "yfinance"  # options: "yfinance" | "polygon" | "tradovate" | "alpaca"
 API_KEY = ""
 API_SECRET = ""
 
