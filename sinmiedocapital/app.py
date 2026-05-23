@@ -208,7 +208,7 @@ st.markdown("---")
 notes_col, manual_col = st.columns([1, 1])
 
 with notes_col:
-    st.markdown("## My Thesis / Notes")
+    st.markdown("## Sin Miedo Capital — Trade Notes")
     st.text_area(
         "notes",
         height=180,
