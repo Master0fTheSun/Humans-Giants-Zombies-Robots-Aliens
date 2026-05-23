@@ -89,8 +89,27 @@ function saveData() {
   }
 }
 
+const EMPTY_DATA = {
+  writing: { clients: [], invoices: [] },
+  insurance: { clients: [], commissionHistory: [] },
+  lyft: { trips: [], maintenance: [] },
+  taxes: {
+    expenses: [],
+    taxReserveRate: 0.28,
+    quarterlyPayments: []
+  },
+  settings: {
+    name: '',
+    monthlyGoal: 8000,
+    savingsRate: 20,
+    theme: AppData?.settings?.theme || 'dark'
+  }
+};
+
 function resetData() {
-  AppData = JSON.parse(JSON.stringify(DEFAULT_DATA));
+  const theme = AppData?.settings?.theme || 'dark';
+  AppData = JSON.parse(JSON.stringify(EMPTY_DATA));
+  AppData.settings.theme = theme;
   saveData();
 }
 
