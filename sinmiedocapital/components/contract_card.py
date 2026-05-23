@@ -60,7 +60,7 @@ def render_contract_card(contract: dict):
     with b4:
         st.markdown("**Setup**")
         st.markdown(
-            f'<span style="color:#a29bfe;font-weight:600;">{contract["setup_type"]}</span>',
+            f'<span style="color:#4d8fff;font-weight:600;">{contract["setup_type"]}</span>',
             unsafe_allow_html=True,
         )
 
@@ -103,7 +103,7 @@ def render_contract_card(contract: dict):
 
     if config.SHOW_ATR and contract.get("atr_14"):
         st.markdown(
-            f'<div style="color:#74b9ff;font-size:0.82em;">ATR(14): {fmt_price(contract["atr_14"], decimals)}</div>',
+            f'<div style="color:#4d8fff;font-size:0.82em;">ATR(14): {fmt_price(contract["atr_14"], decimals)}</div>',
             unsafe_allow_html=True,
         )
 
@@ -138,4 +138,4 @@ def render_contract_card(contract: dict):
         )
     if contract.get("risk_reasons"):
         for r in contract["risk_reasons"]:
-            st.markdown(f'<div style="color:#b2bec3;font-size:0.82em;">• {r}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="color:#7a9cc7;font-size:0.82em;">• {r}</div>', unsafe_allow_html=True)

@@ -19,7 +19,7 @@ def render_thesis(contract: dict):
             unsafe_allow_html=True,
         )
         st.markdown(
-            f'<div style="background:#1a2e1a;border-left:3px solid #2ecc71;padding:8px 12px;'
+            f'<div style="background:#091a0f;border-left:3px solid #2ecc71;padding:8px 12px;'
             f'border-radius:4px;font-size:0.88em;">{contract["bullish_scenario"]}</div>',
             unsafe_allow_html=True,
         )
@@ -29,7 +29,7 @@ def render_thesis(contract: dict):
             unsafe_allow_html=True,
         )
         st.markdown(
-            f'<div style="background:#2e1a1a;border-left:3px solid #e74c3c;padding:8px 12px;'
+            f'<div style="background:#1a0808;border-left:3px solid #e74c3c;padding:8px 12px;'
             f'border-radius:4px;font-size:0.88em;">{contract["bearish_scenario"]}</div>',
             unsafe_allow_html=True,
         )
@@ -39,7 +39,7 @@ def render_thesis(contract: dict):
     # Trade plan + invalidation
     st.markdown("**Trade Plan**")
     st.markdown(
-        f'<div style="background:#1e1e2e;border-left:3px solid #a29bfe;padding:8px 12px;'
+        f'<div style="background:#0c1428;border-left:3px solid #4d8fff;padding:8px 12px;'
         f'border-radius:4px;font-size:0.88em;">{contract["trade_plan"]}</div>',
         unsafe_allow_html=True,
     )
@@ -56,7 +56,7 @@ def render_thesis(contract: dict):
         st.markdown("")
         st.markdown("**Watch at Next Open**")
         st.markdown(
-            f'<div style="background:#1e2e2e;border-left:3px solid #74b9ff;padding:8px 12px;'
+            f'<div style="background:#0c1e30;border-left:3px solid #4d8fff;padding:8px 12px;'
             f'border-radius:4px;font-size:0.88em;">{contract["watch_next_open"]}</div>',
             unsafe_allow_html=True,
         )

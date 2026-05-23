@@ -21,67 +21,67 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    /* Base background — charcoal navy, easier on the eyes than pure black */
-    .stApp { background-color: #1c1c2e; color: #e8edf0; }
-    section[data-testid="stSidebar"] { background-color: #20203a; }
+    /* Base — deep navy-black matching Sin Miedo Capital logo */
+    .stApp { background-color: #070b18; color: #eef2ff; }
+    section[data-testid="stSidebar"] { background-color: #0a1020; }
 
-    /* Remove default padding on main block */
+    /* Layout */
     .block-container { padding-top: 1rem; padding-bottom: 2rem; max-width: 1400px; }
 
     /* Headers */
-    h1, h2, h3 { color: #e8edf0 !important; }
-    h2 { font-size: 1.1rem !important; border-bottom: 1px solid #3a3a5c; padding-bottom: 4px; }
+    h1, h2, h3 { color: #eef2ff !important; }
+    h2 { font-size: 1.1rem !important; border-bottom: 1px solid #162040; padding-bottom: 4px; }
 
-    /* Streamlit info/warning/error boxes */
-    .stAlert { background-color: #252540 !important; border-radius: 6px; }
+    /* Alerts / info boxes */
+    .stAlert { background-color: #0c1428 !important; border-radius: 6px; }
 
-    /* DataFrame tables */
-    .stDataFrame { background: #22223a !important; }
-    [data-testid="stDataFrame"] table { background: #22223a !important; color: #e8edf0 !important; }
+    /* DataFrames */
+    .stDataFrame { background: #0c1428 !important; }
+    [data-testid="stDataFrame"] table { background: #0c1428 !important; color: #eef2ff !important; }
     [data-testid="stDataFrame"] th {
-        background: #2c2c50 !important; color: #74b9ff !important;
+        background: #111d38 !important; color: #4d8fff !important;
         font-size: 0.8em !important; text-transform: uppercase; letter-spacing: 0.05em;
     }
     [data-testid="stDataFrame"] td { font-size: 0.88em !important; }
 
     /* Expander */
-    .streamlit-expanderHeader { background-color: #252540 !important; color: #e8edf0 !important; }
+    .streamlit-expanderHeader { background-color: #0c1428 !important; color: #eef2ff !important; }
 
     /* Metric labels */
-    label[data-testid="stMetricLabel"] { color: #b2bec3 !important; font-size: 0.8em !important; }
+    label[data-testid="stMetricLabel"] { color: #7a9cc7 !important; font-size: 0.8em !important; }
 
     /* Selectbox */
-    .stSelectbox select { background: #2c2c50 !important; color: #e8edf0 !important; }
+    .stSelectbox select { background: #111d38 !important; color: #eef2ff !important; }
 
     /* Text area */
-    textarea { background: #22223a !important; color: #e8edf0 !important; border-color: #3a3a5c !important; }
+    textarea { background: #0c1428 !important; color: #eef2ff !important; border-color: #162040 !important; }
 
     /* Number input */
-    input[type="number"] { background: #22223a !important; color: #e8edf0 !important; }
+    input[type="number"] { background: #0c1428 !important; color: #eef2ff !important; }
 
     /* Dividers */
-    hr { border-color: #3a3a5c !important; }
+    hr { border-color: #162040 !important; }
 
     /* Caption */
-    .stCaption { color: #7f8c9a !important; }
+    .stCaption { color: #4d6d9a !important; }
 
     /* Button */
     .stButton button {
-        background-color: #2c2c50 !important;
-        color: #74b9ff !important;
-        border: 1px solid #3a3a5c !important;
+        background-color: #111d38 !important;
+        color: #4d8fff !important;
+        border: 1px solid #162040 !important;
         border-radius: 4px !important;
         font-size: 0.85em !important;
     }
     .stButton button:hover {
-        background-color: #3a3a6e !important;
-        border-color: #74b9ff !important;
+        background-color: #1a3060 !important;
+        border-color: #4d8fff !important;
     }
 
     /* Scrollbar */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #1c1c2e; }
-    ::-webkit-scrollbar-thumb { background: #3a3a5c; border-radius: 3px; }
+    ::-webkit-scrollbar-track { background: #070b18; }
+    ::-webkit-scrollbar-thumb { background: #162040; border-radius: 3px; }
     </style>
     """,
     unsafe_allow_html=True,

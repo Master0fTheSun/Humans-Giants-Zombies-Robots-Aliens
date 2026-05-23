@@ -33,12 +33,12 @@ def render_news_feed(news: list):
         sentiment = item["sentiment"]
         color = SENTIMENT_COLORS.get(sentiment, "#95a5a6")
         contract_tag = item.get("contract", "")
-        contract_color = "#74b9ff" if contract_tag == "MES" else "#fdcb6e"
+        contract_color = "#4d8fff" if contract_tag == "MES" else "#fdcb6e"
 
         st.markdown(
             f'<div style="border-left:3px solid {color};padding:6px 12px;margin-bottom:6px;'
-            f'background:#1a1a2e;border-radius:0 4px 4px 0;">'
-            f'<span style="color:#95a5a6;font-size:0.78em;">{item["time"]}</span>'
+            f'background:#0c1428;border-radius:0 4px 4px 0;">'
+            f'<span style="color:#7a9cc7;font-size:0.78em;">{item["time"]}</span>'
             f'&nbsp;&nbsp;<span style="color:{contract_color};font-size:0.78em;font-weight:700;">{contract_tag}</span>'
             f'&nbsp;&nbsp;{sentiment_badge(sentiment)}'
             f'<br><span style="font-size:0.9em;">{item["headline"]}</span>'
