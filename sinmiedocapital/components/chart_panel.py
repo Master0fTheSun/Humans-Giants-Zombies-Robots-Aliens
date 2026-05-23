@@ -141,38 +141,34 @@ def render_chart_panel(symbol: str, height: int = 500):
 
     fig = go.Figure()
 
-    # ── Supply / demand zones (drawn first so candles sit on top) ────────────
+    # ── Supply / demand zones as filled Scatter traces ───────────────────────
     zones = _find_zones(df)
     x_end = df.index[-1]
     for zone in zones:
         if zone["type"] == "demand":
-            fill  = "rgba(46,204,113,0.12)"
-            border = "#2ecc71"
-            label  = "Demand"
+            fill_color   = "rgba(46,204,113,0.18)"
+            line_color   = "#2ecc71"
+            label        = "Demand"
         else:
-            fill  = "rgba(231,76,60,0.12)"
-            border = "#e74c3c"
-            label  = "Supply"
+            fill_color   = "rgba(231,76,60,0.18)"
+            line_color   = "#e74c3c"
+            label        = "Supply"
 
-        fig.add_shape(
-            type="rect",
-            x0=zone["x_start"], x1=x_end,
-            y0=zone["low"],     y1=zone["high"],
-            fillcolor=fill,
-            line=dict(color=border, width=0.8),
-            xref="x", yref="y",
-            layer="below",
-        )
-        fig.add_annotation(
-            x=x_end,
-            y=(zone["high"] + zone["low"]) / 2,
-            text=f"<b>{label}</b>",
-            showarrow=False,
-            xanchor="right",
-            font=dict(color=border, size=9),
-            bgcolor="rgba(255,255,255,0.75)",
-            borderpad=2,
-        )
+        x0, x1 = zone["x_start"], x_end
+        y0, y1 = zone["low"], zone["high"]
+
+        # Draw zone as a closed filled polygon
+        fig.add_trace(go.Scatter(
+            x=[x0, x1, x1, x0, x0],
+            y=[y0, y0, y1, y1, y0],
+            fill="toself",
+            fillcolor=fill_color,
+            line=dict(color=line_color, width=1),
+            mode="lines",
+            name=label,
+            showlegend=False,
+            hoverinfo="skip",
+        ))
 
     # ── Candlesticks ─────────────────────────────────────────────────────────
     fig.add_trace(go.Candlestick(
