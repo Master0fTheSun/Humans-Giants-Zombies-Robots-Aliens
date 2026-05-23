@@ -140,9 +140,16 @@ if data.get("live_warning"):
 
 mode_label = "LIVE" if config.DATA_MODE == "live" else "MOCK DATA"
 mode_color = "#2ecc71" if config.DATA_MODE == "live" else "#f39c12"
+mkt = data.get("market_status", {})
+mkt_label = mkt.get("status", "")
+mkt_color = mkt.get("color", "#95a5a6")
+mkt_note  = mkt.get("note", "")
 st.markdown(
-    f'<div style="color:{mode_color};font-size:0.75em;text-align:right;margin-top:-10px;">'
-    f'● {mode_label}</div>',
+    f'<div style="font-size:0.75em;text-align:right;margin-top:-10px;">'
+    f'<span style="color:{mode_color};">● {mode_label}</span>'
+    f'{"  &nbsp;|&nbsp;  <span style=color:" + mkt_color + ";> ● " + mkt_label + "</span>" if mkt_label else ""}'
+    f'{"  <span style=color:#636e72;font-size:0.9em;> — " + mkt_note + "</span>" if mkt_note else ""}'
+    f'</div>',
     unsafe_allow_html=True,
 )
 

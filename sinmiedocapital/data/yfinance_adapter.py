@@ -5,7 +5,7 @@ Symbol mapping:
   MCL → CL=F  (WTI Crude front-month; MCL is 1/10 the size, same price)
   MES → ES=F  (E-mini S&P 500; MES is 1/10 the size, same price)
   VIX → ^VIX
-  10Y → ^TNX  (divide by 10 to get percent)
+  10Y → ^TNX
   DXY → DX-Y.NYB
 
 Data is ~15-min delayed on the free tier.
@@ -13,23 +13,25 @@ Data is ~15-min delayed on the free tier.
 
 import yfinance as yf
 import pandas as pd
-from datetime import datetime, date, timedelta
+import xml.etree.ElementTree as ET
+import urllib.request
+from datetime import datetime, date
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # ---------------------------------------------------------------------------
-# Sentiment keyword lists for news headline classification
+# Sentiment keyword classifier
 # ---------------------------------------------------------------------------
 
 _BULL_WORDS = {
     "rises", "gains", "higher", "up", "beats", "strong", "rally", "surge",
     "jumps", "bullish", "draw", "draws", "positive", "recovery", "recovers",
-    "climbs", "advances", "boost", "lifted", "buying",
+    "climbs", "advances", "boost", "lifted", "buying", "soars", "rebounds",
 }
 _BEAR_WORDS = {
     "falls", "drops", "lower", "down", "misses", "weak", "decline", "slump",
     "plunges", "bearish", "build", "builds", "negative", "selling", "concern",
-    "fears", "warning", "risk", "miss", "disappoints",
+    "fears", "warning", "risk", "miss", "disappoints", "tumbles", "slides",
 }
 
 
@@ -44,72 +46,176 @@ def _classify_sentiment(headline: str) -> str:
     return "Neutral"
 
 
+# ---------------------------------------------------------------------------
+# News parsing — 5 strategies to handle all yfinance versions
+# ---------------------------------------------------------------------------
+
 def _parse_news_item(item) -> dict | None:
-    """Handle both dict (old yfinance) and NewsArticle object (yfinance 1.x)."""
+    title = None
+    ts = 0
+
     try:
+        # Strategy 1: plain dict (yfinance < 0.2)
         if isinstance(item, dict):
-            title = item.get("title", "")
-            ts = item.get("providerPublishTime", 0)
-            tickers = item.get("relatedTickers", [])
+            title = item.get("title") or item.get("headline", "")
+            ts = item.get("providerPublishTime", 0) or item.get("timestamp", 0)
+
         else:
-            # yfinance 1.x NewsArticle object
-            content = getattr(item, "content", None) or {}
-            if hasattr(content, "title"):
-                title = content.title
-                ts = getattr(content, "pubDate", 0)
-                tickers = []
-            else:
-                title = str(getattr(item, "title", "") or "")
-                ts = getattr(item, "providerPublishTime", 0) or 0
-                tickers = list(getattr(item, "relatedTickers", []) or [])
+            # Strategy 2: yfinance 1.x NewsArticle — content object
+            content = getattr(item, "content", None)
+            if content is not None and not isinstance(content, dict):
+                title = getattr(content, "title", None)
+                pub = getattr(content, "pubDate", None)
+                if pub:
+                    try:
+                        ts = pub.timestamp() if hasattr(pub, "timestamp") else float(pub)
+                    except Exception:
+                        ts = 0
 
-        if not title:
-            return None
+            # Strategy 3: content is a dict
+            elif isinstance(content, dict):
+                title = content.get("title", "")
+                ts = content.get("pubDate", 0) or content.get("timestamp", 0)
 
-        pub_time = datetime.fromtimestamp(int(ts)).strftime("%I:%M %p") if ts else ""
-        tickers_str = [str(t).upper() for t in tickers]
-        contract = "MCL" if "CL=F" in tickers_str else "MES" if "ES=F" in tickers_str else "MACRO"
+            # Strategy 4: direct attributes
+            if not title:
+                title = (getattr(item, "title", None) or
+                         getattr(item, "headline", None) or
+                         getattr(item, "_title", None))
 
-        return {
-            "time": pub_time,
-            "headline": title,
-            "sentiment": _classify_sentiment(title),
-            "contract": contract,
-        }
+            # Strategy 5: __dict__ inspection
+            if not title and hasattr(item, "__dict__"):
+                d = vars(item)
+                title = d.get("title") or d.get("headline", "")
+
     except Exception:
         return None
 
+    if not title or not str(title).strip():
+        return None
+
+    title = str(title).strip()
+    try:
+        pub_time = datetime.fromtimestamp(float(ts)).strftime("%I:%M %p") if ts else ""
+    except Exception:
+        pub_time = ""
+
+    return {"time": pub_time, "headline": title,
+            "sentiment": _classify_sentiment(title), "contract": "MACRO"}
+
+
+def _fetch_news_rss(yf_symbol: str, contract: str) -> list:
+    """Yahoo Finance RSS feed — fallback when yfinance news returns empty."""
+    from email.utils import parsedate_to_datetime
+    encoded = yf_symbol.replace("=", "%3D").replace("^", "%5E")
+    url = (f"https://feeds.finance.yahoo.com/rss/2.0/headline"
+           f"?s={encoded}&region=US&lang=en-US")
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=8) as r:
+            xml_data = r.read()
+        root = ET.fromstring(xml_data)
+        news = []
+        for item in root.findall(".//item")[:6]:
+            title = (item.findtext("title") or "").strip()
+            pub = item.findtext("pubDate", "")
+            if not title:
+                continue
+            try:
+                time_str = parsedate_to_datetime(pub).strftime("%I:%M %p")
+            except Exception:
+                time_str = ""
+            news.append({"time": time_str, "headline": title,
+                         "sentiment": _classify_sentiment(title), "contract": contract})
+        return news
+    except Exception:
+        return []
+
 
 # ---------------------------------------------------------------------------
-# Core helpers
+# Price fetching — most reliable first
+# ---------------------------------------------------------------------------
+
+def _get_current_price(ticker, daily: pd.DataFrame, decimals: int) -> float:
+    # 1-min bars are the freshest source for futures
+    for interval in ("1m", "2m", "5m"):
+        try:
+            h = ticker.history(period="1d", interval=interval)
+            if not h.empty:
+                price = float(h["Close"].iloc[-1])
+                if price > 0:
+                    return round(price, decimals)
+        except Exception:
+            continue
+
+    # fast_info as secondary
+    try:
+        price = ticker.fast_info.last_price
+        if price and price > 0:
+            return round(float(price), decimals)
+    except Exception:
+        pass
+
+    # Daily close as last resort
+    return round(float(daily["Close"].iloc[-1]), decimals)
+
+
+# ---------------------------------------------------------------------------
+# Market status
+# ---------------------------------------------------------------------------
+
+def _market_status() -> dict:
+    """Rough CME Globex open/closed indicator based on ET time."""
+    try:
+        import pytz
+        et = pytz.timezone("America/New_York")
+        now = datetime.now(et)
+    except Exception:
+        now = datetime.utcnow()
+
+    wd = now.weekday()   # 0=Mon … 6=Sun
+    h, m = now.hour, now.minute
+
+    # Saturday all day, Sunday before 6PM ET → closed
+    if wd == 5 or (wd == 6 and h < 18):
+        return {"status": "Closed", "color": "#e74c3c", "note": "Weekend — markets closed"}
+    # Friday after 5PM ET → closed
+    if wd == 4 and (h > 17 or (h == 17 and m >= 0)):
+        return {"status": "Closed", "color": "#e74c3c", "note": "Weekend — markets closed"}
+    # Daily maintenance break 5–6PM ET
+    if h == 17:
+        return {"status": "Break", "color": "#f39c12", "note": "Daily maintenance break (5–6 PM ET)"}
+    # Regular trading hours 9:30AM–4PM ET
+    if (h == 9 and m >= 30) or (10 <= h <= 15) or (h == 16 and m == 0):
+        return {"status": "RTH Open", "color": "#2ecc71", "note": "Regular trading hours"}
+    # All other times = Globex overnight session
+    return {"status": "Globex", "color": "#74b9ff", "note": "Overnight Globex session"}
+
+
+# ---------------------------------------------------------------------------
+# Core math helpers
 # ---------------------------------------------------------------------------
 
 def _calc_atr(daily: pd.DataFrame, period: int = 14) -> float:
     if len(daily) < 2:
         return 0.0
-    trs = []
     closes = daily["Close"].values
-    highs = daily["High"].values
-    lows = daily["Low"].values
-    for i in range(1, len(daily)):
-        tr = max(
-            highs[i] - lows[i],
-            abs(highs[i] - closes[i - 1]),
-            abs(lows[i] - closes[i - 1]),
-        )
-        trs.append(tr)
+    highs  = daily["High"].values
+    lows   = daily["Low"].values
+    trs = [max(highs[i] - lows[i],
+               abs(highs[i] - closes[i - 1]),
+               abs(lows[i] - closes[i - 1]))
+           for i in range(1, len(daily))]
     return round(sum(trs[-period:]) / min(len(trs), period), 2)
 
 
 def _calc_vwap(intraday: pd.DataFrame) -> float | None:
     try:
         today = date.today()
-        # Support both timezone-aware and naive index
         try:
             mask = intraday.index.tz_convert("America/New_York").normalize().date == today
         except Exception:
             mask = pd.Series(intraday.index).apply(lambda x: x.date() == today).values
-
         bars = intraday[mask]
         if bars.empty or bars["Volume"].sum() == 0:
             return None
@@ -119,153 +225,101 @@ def _calc_vwap(intraday: pd.DataFrame) -> float | None:
         return None
 
 
-def _round_to_key_level(price: float, is_crude: bool) -> list[float]:
-    """Generate nearby round-number key levels."""
-    levels = []
-    if is_crude:
-        base = round(price)
-        for offset in [-2, -1, 0, 1, 2]:
-            lvl = base + offset
-            if abs(lvl - price) > 0.1:
-                levels.append(round(lvl, 2))
-    else:
-        base = round(price / 25) * 25
-        for offset in [-2, -1, 0, 1, 2]:
-            lvl = base + offset * 25
-            if abs(lvl - price) > 2:
-                levels.append(round(lvl, 2))
-    return levels
+def _today_bars(intraday: pd.DataFrame) -> pd.DataFrame:
+    today = date.today()
+    try:
+        return intraday[intraday.index.tz_convert("America/New_York").normalize().date == today]
+    except Exception:
+        return intraday[pd.Series(intraday.index).apply(lambda x: x.date() == today).values]
 
 
-def _build_key_levels(price, prior_high, prior_low, session_high, session_low, is_crude):
-    resistance = []
-    support = []
+def _build_key_levels(price, prior_high, prior_low, sess_high, sess_low, is_crude):
+    gap = 0.20 if is_crude else 5
+    step = 1 if is_crude else 25
+    base = round(price) if is_crude else round(price / step) * step
 
-    round_lvls = _round_to_key_level(price, is_crude)
-    for lvl in round_lvls:
+    resistance, support = [], []
+    for offset in range(-3, 4):
+        lvl = round(base + offset * step, 2)
+        if abs(lvl - price) < 0.05:
+            continue
         if lvl > price:
             resistance.append({"level": lvl, "note": "Round number"})
         else:
             support.append({"level": lvl, "note": "Round number"})
 
-    # Prior day levels override round numbers if close
-    resistance = [r for r in resistance if abs(r["level"] - prior_high) > (0.20 if is_crude else 5)]
-    support = [s for s in support if abs(s["level"] - prior_low) > (0.20 if is_crude else 5)]
+    resistance = [r for r in resistance if abs(r["level"] - prior_high) > gap]
+    support    = [s for s in support    if abs(s["level"] - prior_low)  > gap]
 
     resistance.insert(0, {"level": round(prior_high, 2), "note": "Prior day high"})
-    support.insert(0, {"level": round(prior_low, 2), "note": "Prior day low"})
+    support.insert(0,    {"level": round(prior_low,  2), "note": "Prior day low"})
 
-    if abs(session_high - prior_high) > (0.10 if is_crude else 3):
-        resistance.append({"level": round(session_high, 2), "note": "Session high"})
-    if abs(session_low - prior_low) > (0.10 if is_crude else 3):
-        support.append({"level": round(session_low, 2), "note": "Session low"})
+    if abs(sess_high - prior_high) > gap:
+        resistance.append({"level": round(sess_high, 2), "note": "Session high"})
+    if abs(sess_low - prior_low) > gap:
+        support.append({"level": round(sess_low, 2), "note": "Session low"})
 
     resistance.sort(key=lambda x: x["level"])
     support.sort(key=lambda x: x["level"], reverse=True)
-
     return resistance[:3], support[:3]
 
 
-def _generate_thesis(symbol: str, d: dict) -> tuple[str, str, str, str, str, str, str]:
-    """Return (trend, bias, volatility, setup_type, thesis, bullish_scenario, bearish_scenario)."""
-    price = d["current_price"]
-    vwap = d["vwap"] or price
+def _generate_thesis(symbol: str, d: dict):
+    price  = d["current_price"]
+    vwap   = d["vwap"] or price
     change = d["change"]
-    atr = d["atr_14"] or 1
-    prior_high = d["prior_day_high"]
-    prior_low = d["prior_day_low"]
-    session_high = d["overnight_high"]
-    session_low = d["overnight_low"]
-    session_range = session_high - session_low
+    atr    = d["atr_14"] or 1
+    ph, pl = d["prior_day_high"], d["prior_day_low"]
+    sh, sl = d["overnight_high"],  d["overnight_low"]
+    sr     = sh - sl
+    fmt    = lambda v: f"{v:,.2f}"
 
     above_vwap = price > vwap
-    gap_pct = abs(change) / atr
+    trend  = ("Bullish" if change > atr * 0.25
+              else "Bearish" if change < -atr * 0.25
+              else "Neutral")
+    vol    = ("High" if sr > atr * 1.3 else "Medium" if sr > atr * 0.6 else "Low")
+    bias   = ("Long"  if trend == "Bullish" and above_vwap
+              else "Short" if trend == "Bearish" and not above_vwap
+              else "Neutral / Watch")
+    setup  = ("Breakout"  if price > ph
+              else "Breakdown" if price < pl
+              else "Gap Fade"  if abs(change) / atr > 0.5
+              else "Range / Fade")
 
-    # Trend
-    if change > atr * 0.25:
-        trend = "Bullish"
-    elif change < -atr * 0.25:
-        trend = "Bearish"
-    else:
-        trend = "Neutral"
-
-    # Volatility
-    if session_range > atr * 1.3:
-        volatility = "High"
-    elif session_range > atr * 0.6:
-        volatility = "Medium"
-    else:
-        volatility = "Low"
-
-    # Bias
-    if trend == "Bullish" and above_vwap:
-        bias = "Long"
-    elif trend == "Bearish" and not above_vwap:
-        bias = "Short"
-    else:
-        bias = "Neutral / Watch"
-
-    # Setup
-    if price > prior_high:
-        setup_type = "Breakout"
-    elif price < prior_low:
-        setup_type = "Breakdown"
-    elif gap_pct > 0.5:
-        setup_type = "Gap Fade"
-    else:
-        setup_type = "Range / Fade"
-
-    vwap_str = "above" if above_vwap else "below"
+    vwap_s  = "above" if above_vwap else "below"
     gap_dir = "up" if change >= 0 else "down"
-    fmt = lambda v: f"{v:,.2f}"
-
-    if symbol == "MCL":
-        name = "Crude"
-        inv_long = fmt(session_low)
-        inv_short = fmt(session_high)
-        target_bull = fmt(prior_high + atr * 0.5)
-        target_bear = fmt(prior_low - atr * 0.5)
-    else:
-        name = "MES"
-        inv_long = fmt(session_low)
-        inv_short = fmt(session_high)
-        target_bull = fmt(prior_high + atr * 0.5)
-        target_bear = fmt(prior_low - atr * 0.5)
+    name    = "Crude" if symbol == "MCL" else "MES"
+    t_bull  = fmt(ph + atr * 0.5)
+    t_bear  = fmt(pl - atr * 0.5)
+    inv_l   = fmt(sl)
+    inv_s   = fmt(sh)
 
     thesis = (
         f"{name} is {gap_dir} {fmt(abs(change))} from prior close ({fmt(d['prev_close'])}). "
-        f"Price is {vwap_str} VWAP ({fmt(vwap)}), "
-        f"session range {fmt(session_low)}–{fmt(session_high)} "
-        f"({fmt(session_range)} vs ATR {fmt(atr)}). "
-        f"Bias: {bias}."
+        f"Price is {vwap_s} VWAP ({fmt(vwap)}), session range {fmt(sl)}–{fmt(sh)} "
+        f"({fmt(sr)} vs ATR {fmt(atr)}). Bias: {bias}."
     )
+    bull = (f"Hold {vwap_s} VWAP ({fmt(vwap)}) and accept above {fmt(sh)}. "
+            f"Target: prior day high {fmt(ph)}, extension toward {t_bull}.")
+    bear = (f"Fail to hold VWAP ({fmt(vwap)}) and break {fmt(sl)}. "
+            f"Target: prior day low {fmt(pl)}, extension toward {t_bear}.")
 
-    bull_scenario = (
-        f"Hold {vwap_str} VWAP ({fmt(vwap)}) and accept above {fmt(session_high)}. "
-        f"Target: prior day high {fmt(prior_high)}, extension toward {target_bull}."
-    )
+    if bias == "Long":
+        plan = f"Long entry on reclaim of {fmt(vwap)} with stop below {inv_l}."
+    elif bias == "Short":
+        plan = f"Short entry on rejection at {fmt(vwap)} with stop above {inv_s}."
+    else:
+        plan = "Wait for VWAP acceptance or rejection before committing direction."
 
-    bear_scenario = (
-        f"Fail to hold VWAP ({fmt(vwap)}) and break below {fmt(session_low)}. "
-        f"Target: prior day low {fmt(prior_low)}, extension toward {target_bear}."
-    )
+    watch = (f"Watch VWAP ({fmt(vwap)}) and session "
+             f"{'high ' + fmt(sh) if bias == 'Long' else 'low ' + fmt(sl)} at the open. "
+             f"Prior day {'high ' + fmt(ph) if bias != 'Short' else 'low ' + fmt(pl)} is key.")
 
-    trade_plan = (
-        f"{'Long' if bias == 'Long' else 'Short' if bias == 'Short' else 'Watch'} bias. "
-        f"{'Long entry on reclaim of ' + fmt(vwap) + ' with stop below ' + inv_long if bias == 'Long' else 'Short entry on rejection at ' + fmt(vwap) + ' with stop above ' + inv_short if bias == 'Short' else 'Wait for VWAP acceptance or rejection before committing direction.'}."
-    )
+    inv_level = float(inv_l) if bias == "Long" else float(inv_s) if bias == "Short" else float(sl)
+    risk      = "High" if vol == "High" else "Medium"
 
-    watch = (
-        f"Watch VWAP ({fmt(vwap)}) and session {'high' if bias == 'Long' else 'low'} "
-        f"({''+fmt(session_high) if bias == 'Long' else fmt(session_low)}) at the open. "
-        f"Prior day {'high' if bias != 'Short' else 'low'} "
-        f"({fmt(prior_high) if bias != 'Short' else fmt(prior_low)}) is the key level to clear."
-    )
-
-    inv_level = float(inv_long) if bias == "Long" else float(inv_short) if bias == "Short" else float(session_low)
-    risk_level = "High" if volatility == "High" else "Medium"
-
-    return trend, bias, volatility, setup_type, thesis, bull_scenario, bear_scenario, trade_plan, watch, inv_level, risk_level
+    return trend, bias, vol, setup, thesis, bull, bear, plan, watch, inv_level, risk
 
 
 # ---------------------------------------------------------------------------
@@ -273,189 +327,167 @@ def _generate_thesis(symbol: str, d: dict) -> tuple[str, str, str, str, str, str
 # ---------------------------------------------------------------------------
 
 def _fetch_contract(yf_symbol: str, display_symbol: str, display_name: str) -> dict:
-    is_crude = display_symbol == "MCL"
     decimals = 2
-
-    ticker = yf.Ticker(yf_symbol)
-    daily = ticker.history(period="10d", interval="1d")
-    intraday = ticker.history(period="2d", interval="5m")
-
-    today = date.today()
+    ticker   = yf.Ticker(yf_symbol)
+    daily    = ticker.history(period="15d", interval="1d")
+    intraday = ticker.history(period="2d",  interval="5m")
+    today    = date.today()
 
     if daily.empty:
-        raise RuntimeError(f"No daily data returned for {yf_symbol}")
+        raise RuntimeError(f"No data for {yf_symbol}")
 
-    # Current price
+    current_price = _get_current_price(ticker, daily, decimals)
+
+    # Prior completed session (exclude any partial bar for today)
     try:
-        current_price = round(float(ticker.fast_info.last_price), decimals)
+        prior_rows = daily[daily.index.tz_convert("America/New_York").normalize().date < today]
     except Exception:
-        current_price = round(float(daily["Close"].iloc[-1]), decimals)
-
-    # Prior day rows (exclude today's partial bar if present)
-    prior_rows = daily[daily.index.normalize().date < today] if hasattr(daily.index, "normalize") else daily[pd.Series(daily.index).apply(lambda x: x.date() < today).values]
+        prior_rows = daily[pd.Series(daily.index).apply(lambda x: x.date() < today).values]
     if prior_rows.empty:
         prior_rows = daily.iloc[:-1] if len(daily) > 1 else daily
 
-    prev_close = round(float(prior_rows["Close"].iloc[-1]), decimals)
-    prior_day_high = round(float(prior_rows["High"].iloc[-1]), decimals)
-    prior_day_low = round(float(prior_rows["Low"].iloc[-1]), decimals)
-    prior_day_close = prev_close
+    prev_close     = round(float(prior_rows["Close"].iloc[-1]), decimals)
+    prior_day_high = round(float(prior_rows["High"].iloc[-1]),  decimals)
+    prior_day_low  = round(float(prior_rows["Low"].iloc[-1]),   decimals)
 
-    # Today's session range
-    try:
-        today_bars = intraday[intraday.index.tz_convert("America/New_York").normalize().date == today]
-    except Exception:
-        today_bars = intraday[pd.Series(intraday.index).apply(lambda x: x.date() == today).values]
-
-    if not today_bars.empty:
-        session_high = round(float(today_bars["High"].max()), decimals)
-        session_low = round(float(today_bars["Low"].min()), decimals)
-        volume = int(today_bars["Volume"].sum())
+    # Today's session bars
+    bars = _today_bars(intraday)
+    if not bars.empty:
+        sess_high = round(float(bars["High"].max()), decimals)
+        sess_low  = round(float(bars["Low"].min()),  decimals)
+        volume    = int(bars["Volume"].sum())
     else:
-        session_high = round(float(daily["High"].iloc[-1]), decimals)
-        session_low = round(float(daily["Low"].iloc[-1]), decimals)
-        volume = int(daily["Volume"].iloc[-1])
+        # Market closed / pre-session — use prior day range as placeholder
+        sess_high = prior_day_high
+        sess_low  = prior_day_low
+        volume    = int(prior_rows["Volume"].iloc[-1])
 
-    vwap = _calc_vwap(intraday)
-    atr = _calc_atr(prior_rows)
+    vwap   = _calc_vwap(intraday)
+    atr    = _calc_atr(prior_rows)
     change = round(current_price - prev_close, decimals)
-    change_pct = round(change / prev_close * 100, 2) if prev_close else 0
+    chg_pct = round(change / prev_close * 100, 2) if prev_close else 0
+    gap    = "Gap Up" if change > 0.05 else "Gap Down" if change < -0.05 else "Flat"
 
-    gap_size = change
-    gap = "Gap Up" if gap_size > 0.05 else "Gap Down" if gap_size < -0.05 else "Flat"
-
+    is_crude = display_symbol == "MCL"
     resistance, support = _build_key_levels(
         current_price, prior_day_high, prior_day_low,
-        session_high, session_low, is_crude
+        sess_high, sess_low, is_crude
     )
 
     base = {
-        "symbol": display_symbol,
-        "name": display_name,
-        "current_price": current_price,
-        "prev_close": prev_close,
-        "change": change,
-        "change_pct": change_pct,
-        "overnight_high": session_high,
-        "overnight_low": session_low,
-        "prior_day_high": prior_day_high,
-        "prior_day_low": prior_day_low,
-        "prior_day_close": prior_day_close,
-        "vwap": vwap or round((session_high + session_low) / 2, decimals),
-        "atr_14": atr,
-        "volume": volume,
-        "gap": gap,
-        "gap_size": gap_size,
-        "key_resistance": resistance,
-        "key_support": support,
+        "symbol":          display_symbol,
+        "name":            display_name,
+        "current_price":   current_price,
+        "prev_close":      prev_close,
+        "change":          change,
+        "change_pct":      chg_pct,
+        "overnight_high":  sess_high,
+        "overnight_low":   sess_low,
+        "prior_day_high":  prior_day_high,
+        "prior_day_low":   prior_day_low,
+        "prior_day_close": prev_close,
+        "vwap":            vwap or round((sess_high + sess_low) / 2, decimals),
+        "atr_14":          atr,
+        "volume":          volume,
+        "gap":             gap,
+        "gap_size":        change,
+        "key_resistance":  resistance,
+        "key_support":     support,
     }
 
-    (trend, bias, volatility, setup_type, thesis,
-     bull, bear, trade_plan, watch, inv_level, risk_level) = _generate_thesis(display_symbol, base)
+    (trend, bias, vol, setup, thesis, bull, bear,
+     plan, watch, inv_level, risk) = _generate_thesis(display_symbol, base)
 
     risk_reasons = []
-    if volatility == "High":
-        risk_reasons.append(f"Elevated volatility — session range {round(session_high - session_low, 2)} vs ATR {atr}")
-    if abs(gap_size) > atr * 0.4:
-        risk_reasons.append(f"{gap} of {abs(gap_size):.2f} — gap fade risk")
+    if vol == "High":
+        risk_reasons.append(f"Elevated volatility — range {round(sess_high - sess_low, 2)} vs ATR {atr}")
+    if abs(change) > atr * 0.4:
+        risk_reasons.append(f"{gap} of {abs(change):.2f} — gap fade risk")
 
     base.update({
-        "trend": trend,
-        "bias": bias,
-        "volatility": volatility,
-        "setup_type": setup_type,
-        "thesis": thesis,
+        "trend":          trend,
+        "bias":           bias,
+        "volatility":     vol,
+        "setup_type":     setup,
+        "thesis":         thesis,
         "bullish_scenario": bull,
         "bearish_scenario": bear,
-        "trade_plan": trade_plan,
+        "trade_plan":     plan,
         "watch_next_open": watch,
-        "invalidation": inv_level,
-        "risk_level": risk_level,
-        "risk_reasons": risk_reasons if risk_reasons else ["Standard market risk — monitor catalysts"],
+        "invalidation":   inv_level,
+        "risk_level":     risk,
+        "risk_reasons":   risk_reasons or ["Standard market risk — monitor catalysts"],
     })
     return base
 
 
 # ---------------------------------------------------------------------------
-# Macro fetch
+# Macro
 # ---------------------------------------------------------------------------
 
 def _fetch_macro() -> dict:
     macro = {
-        "headline_risk": "Medium",
-        "fed_stance": "Unknown",
+        "headline_risk": "Medium", "fed_stance": "Unknown",
         "equity_trend": "Unknown",
-        "dollar_index": 0.0,
-        "dollar_change": 0.0,
-        "vix": 0.0,
-        "vix_change": 0.0,
-        "ten_year_yield": 0.0,
-        "ten_year_change": 0.0,
+        "dollar_index": 0.0, "dollar_change": 0.0,
+        "vix": 0.0,           "vix_change": 0.0,
+        "ten_year_yield": 0.0, "ten_year_change": 0.0,
         "economic_events": [],
     }
-
-    for symbol, key, scale in [
-        ("^VIX", "vix", 1),
-        ("^TNX", "ten_year_yield", 1),
-        ("DX-Y.NYB", "dollar_index", 1),
+    for symbol, val_key, chg_key in [
+        ("^VIX",      "vix",            "vix_change"),
+        ("^TNX",      "ten_year_yield",  "ten_year_change"),
+        ("DX-Y.NYB",  "dollar_index",    "dollar_change"),
     ]:
         try:
-            t = yf.Ticker(symbol)
-            h = t.history(period="2d", interval="1d")
-            if len(h) >= 2:
-                macro[key] = round(float(h["Close"].iloc[-1]) * scale, 2)
-                macro[key.replace("vix", "vix").replace("ten_year_yield", "ten_year") + "_change"] = round(
-                    float(h["Close"].iloc[-1] - h["Close"].iloc[-2]) * scale, 2
-                )
-            elif len(h) == 1:
-                macro[key] = round(float(h["Close"].iloc[-1]) * scale, 2)
+            h = yf.Ticker(symbol).history(period="5d", interval="1d")
+            if not h.empty:
+                macro[val_key] = round(float(h["Close"].iloc[-1]), 2)
+                if len(h) >= 2:
+                    macro[chg_key] = round(float(h["Close"].diff().iloc[-1]), 2)
         except Exception:
             pass
 
-    # Rename computed change keys correctly
-    try:
-        macro["vix_change"] = round(float(yf.Ticker("^VIX").history(period="2d", interval="1d")["Close"].diff().iloc[-1]), 2)
-    except Exception:
-        pass
-    try:
-        macro["ten_year_change"] = round(float(yf.Ticker("^TNX").history(period="2d", interval="1d")["Close"].diff().iloc[-1]), 2)
-    except Exception:
-        pass
-    try:
-        macro["dollar_change"] = round(float(yf.Ticker("DX-Y.NYB").history(period="2d", interval="1d")["Close"].diff().iloc[-1]), 2)
-    except Exception:
-        pass
-
-    # Derived headline risk
     vix = macro["vix"]
-    if vix > 25:
-        macro["headline_risk"] = "High"
-    elif vix > 18:
-        macro["headline_risk"] = "Medium"
-    else:
-        macro["headline_risk"] = "Low"
-
+    macro["headline_risk"] = ("High" if vix > 25
+                              else "Medium" if vix > 18
+                              else "Low" if vix > 0
+                              else "Unknown")
     return macro
 
 
 # ---------------------------------------------------------------------------
-# News fetch
+# News — yfinance primary, Yahoo RSS fallback
 # ---------------------------------------------------------------------------
 
 def _fetch_news() -> list:
     news = []
     seen = set()
-    for yf_symbol, contract in [("CL=F", "MCL"), ("ES=F", "MES")]:
+
+    for yf_sym, contract in [("CL=F", "MCL"), ("ES=F", "MES")]:
+        items_parsed = []
+
+        # Primary: yfinance
         try:
-            items = yf.Ticker(yf_symbol).news or []
-            for item in items[:8]:
+            raw = yf.Ticker(yf_sym).news or []
+            for item in raw[:8]:
                 parsed = _parse_news_item(item)
                 if parsed and parsed["headline"] not in seen:
                     seen.add(parsed["headline"])
                     parsed["contract"] = contract
-                    news.append(parsed)
+                    items_parsed.append(parsed)
         except Exception:
             pass
+
+        # Fallback: Yahoo RSS if yfinance returned nothing
+        if not items_parsed:
+            for item in _fetch_news_rss(yf_sym, contract):
+                if item["headline"] not in seen:
+                    seen.add(item["headline"])
+                    items_parsed.append(item)
+
+        news.extend(items_parsed)
+
     return news[:12]
 
 
@@ -464,12 +496,9 @@ def _fetch_news() -> list:
 # ---------------------------------------------------------------------------
 
 def get_yfinance_data() -> dict:
-    from datetime import datetime
-
     errors = []
-
-    # Contracts
     contracts = {}
+
     for yf_sym, disp_sym, disp_name in [
         ("CL=F", "MCL", "Micro Crude Oil"),
         ("ES=F", "MES", "Micro E-mini S&P 500"),
@@ -479,7 +508,6 @@ def get_yfinance_data() -> dict:
         except Exception as e:
             errors.append(f"{disp_sym}: {e}")
 
-    macro = {}
     try:
         macro = _fetch_macro()
     except Exception as e:
@@ -491,21 +519,21 @@ def get_yfinance_data() -> dict:
             "economic_events": [],
         }
 
-    news = []
     try:
         news = _fetch_news()
     except Exception as e:
         errors.append(f"news: {e}")
+        news = []
 
+    mkt = _market_status()
     result = {
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S ET") + " (~15min delay)",
+        "timestamp":    datetime.now().strftime("%Y-%m-%d %H:%M:%S ET") + " (~15min delay)",
         "session_date": datetime.now().strftime("%A, %B %d, %Y"),
-        "macro": macro,
-        "news": news,
-        "contracts": contracts,
+        "market_status": mkt,
+        "macro":        macro,
+        "news":         news,
+        "contracts":    contracts,
     }
-
     if errors:
         result["live_warning"] = "Some data failed to load: " + " | ".join(errors)
-
     return result

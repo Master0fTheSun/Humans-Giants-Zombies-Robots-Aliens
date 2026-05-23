@@ -2,6 +2,7 @@
 
 import streamlit as st
 from utils.helpers import risk_badge
+from components.consistency_box import render_consistency_box
 
 
 def render_thesis(contract: dict):
@@ -59,3 +60,6 @@ def render_thesis(contract: dict):
             f'border-radius:4px;font-size:0.88em;">{contract["watch_next_open"]}</div>',
             unsafe_allow_html=True,
         )
+
+    st.markdown("")
+    render_consistency_box(contract)
