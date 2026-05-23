@@ -26,7 +26,14 @@ st.markdown(
     section[data-testid="stSidebar"] { background-color: #eef3ff; }
 
     /* Layout */
-    .block-container { padding-top: 1rem; padding-bottom: 2rem; max-width: 1400px; }
+    .block-container { padding-top: 4rem; padding-bottom: 2rem; max-width: 1400px; }
+
+    /* Match Streamlit top bar to our theme so it blends in */
+    header[data-testid="stHeader"] {
+        background-color: #f5f8ff !important;
+        border-bottom: 1px solid #c5d5ee;
+    }
+    header[data-testid="stHeader"] * { color: #0a1428 !important; }
 
     /* Headers */
     h1, h2, h3 { color: #0a1428 !important; }
