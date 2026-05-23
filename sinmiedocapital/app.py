@@ -21,67 +21,67 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    /* Base dark background */
-    .stApp { background-color: #0d0d1a; color: #dfe6e9; }
-    section[data-testid="stSidebar"] { background-color: #111122; }
+    /* Base background — charcoal navy, easier on the eyes than pure black */
+    .stApp { background-color: #1c1c2e; color: #e8edf0; }
+    section[data-testid="stSidebar"] { background-color: #20203a; }
 
     /* Remove default padding on main block */
     .block-container { padding-top: 1rem; padding-bottom: 2rem; max-width: 1400px; }
 
     /* Headers */
-    h1, h2, h3 { color: #dfe6e9 !important; }
-    h2 { font-size: 1.1rem !important; border-bottom: 1px solid #2d2d4e; padding-bottom: 4px; }
+    h1, h2, h3 { color: #e8edf0 !important; }
+    h2 { font-size: 1.1rem !important; border-bottom: 1px solid #3a3a5c; padding-bottom: 4px; }
 
     /* Streamlit info/warning/error boxes */
-    .stAlert { background-color: #1a1a2e !important; border-radius: 6px; }
+    .stAlert { background-color: #252540 !important; border-radius: 6px; }
 
     /* DataFrame tables */
-    .stDataFrame { background: #12122a !important; }
-    [data-testid="stDataFrame"] table { background: #12122a !important; color: #dfe6e9 !important; }
+    .stDataFrame { background: #22223a !important; }
+    [data-testid="stDataFrame"] table { background: #22223a !important; color: #e8edf0 !important; }
     [data-testid="stDataFrame"] th {
-        background: #1e1e3a !important; color: #74b9ff !important;
+        background: #2c2c50 !important; color: #74b9ff !important;
         font-size: 0.8em !important; text-transform: uppercase; letter-spacing: 0.05em;
     }
     [data-testid="stDataFrame"] td { font-size: 0.88em !important; }
 
     /* Expander */
-    .streamlit-expanderHeader { background-color: #1a1a2e !important; color: #dfe6e9 !important; }
+    .streamlit-expanderHeader { background-color: #252540 !important; color: #e8edf0 !important; }
 
     /* Metric labels */
     label[data-testid="stMetricLabel"] { color: #b2bec3 !important; font-size: 0.8em !important; }
 
     /* Selectbox */
-    .stSelectbox select { background: #1e1e3a !important; color: #dfe6e9 !important; }
+    .stSelectbox select { background: #2c2c50 !important; color: #e8edf0 !important; }
 
     /* Text area */
-    textarea { background: #12122a !important; color: #dfe6e9 !important; border-color: #2d2d4e !important; }
+    textarea { background: #22223a !important; color: #e8edf0 !important; border-color: #3a3a5c !important; }
 
     /* Number input */
-    input[type="number"] { background: #12122a !important; color: #dfe6e9 !important; }
+    input[type="number"] { background: #22223a !important; color: #e8edf0 !important; }
 
     /* Dividers */
-    hr { border-color: #2d2d4e !important; }
+    hr { border-color: #3a3a5c !important; }
 
     /* Caption */
-    .stCaption { color: #636e72 !important; }
+    .stCaption { color: #7f8c9a !important; }
 
     /* Button */
     .stButton button {
-        background-color: #1e1e3a !important;
+        background-color: #2c2c50 !important;
         color: #74b9ff !important;
-        border: 1px solid #2d2d4e !important;
+        border: 1px solid #3a3a5c !important;
         border-radius: 4px !important;
         font-size: 0.85em !important;
     }
     .stButton button:hover {
-        background-color: #2d2d5e !important;
+        background-color: #3a3a6e !important;
         border-color: #74b9ff !important;
     }
 
     /* Scrollbar */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #0d0d1a; }
-    ::-webkit-scrollbar-thumb { background: #2d2d4e; border-radius: 3px; }
+    ::-webkit-scrollbar-track { background: #1c1c2e; }
+    ::-webkit-scrollbar-thumb { background: #3a3a5c; border-radius: 3px; }
     </style>
     """,
     unsafe_allow_html=True,
