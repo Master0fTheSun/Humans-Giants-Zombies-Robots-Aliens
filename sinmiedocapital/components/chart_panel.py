@@ -1,4 +1,4 @@
-"""Native Plotly candlestick charts with VWAP, EMA, supply/demand zones, and manual levels."""
+"""Native Plotly candlestick charts with VWAP, EMA, auto signals, and manual levels."""
 
 import streamlit as st
 import pandas as pd
@@ -26,65 +26,28 @@ def _compute_vwap(df: pd.DataFrame) -> pd.Series:
     return cum_tp / cum_vol.replace(0, float("nan"))
 
 
-def _find_zones(df: pd.DataFrame, max_per_type: int = 4) -> list:
+def _find_signals(df: pd.DataFrame, vwap: pd.Series) -> tuple:
     """
-    Detect supply/demand zones using swing high/low pivot detection.
-
-    A swing high is a bar whose High is the highest within pivot_bars on
-    each side — marks a supply zone. A swing low marks a demand zone.
-    Zone height = the candle's full range (High - Low), minimum 0.1% of price.
+    Detect buy/sell signals from VWAP crossovers confirmed by EMA 20 direction.
+    Returns (buy_times, buy_prices, sell_times, sell_prices).
     """
-    n = len(df)
-    pivot_bars = max(3, min(8, n // 25))
-    if n < pivot_bars * 2 + 1:
-        return []
+    ema20 = df["Close"].ewm(span=20, adjust=False).mean()
+    close = df["Close"]
 
-    highs  = df["High"].values
-    lows   = df["Low"].values
-    opens  = df["Open"].values
-    closes = df["Close"].values
-    idx    = df.index
+    above = close > vwap
+    cross_up   = above & ~above.shift(1).fillna(False)  # just crossed above
+    cross_down = ~above & above.shift(1).fillna(False)  # just crossed below
 
-    avg_range = (df["High"] - df["Low"]).mean()
-    min_height = avg_range * 0.2  # zone must be at least 20% of avg bar range
+    # Confirm with EMA: buy only when close > EMA, sell only when close < EMA
+    buy_mask  = cross_up  & (close > ema20)
+    sell_mask = cross_down & (close < ema20)
 
-    demand, supply = [], []
+    buy_times  = df.index[buy_mask]
+    buy_prices = df["Low"][buy_mask] * 0.9995   # just below the bar
+    sell_times = df.index[sell_mask]
+    sell_prices = df["High"][sell_mask] * 1.0005  # just above the bar
 
-    for i in range(pivot_bars, n - pivot_bars):
-        hi = highs[i]
-        lo = lows[i]
-        zone_h = max(hi - lo, min_height)
-
-        # Swing high → supply zone
-        if hi >= max(highs[i - pivot_bars: i + pivot_bars + 1]):
-            supply.append({
-                "type": "supply",
-                "high": hi,
-                "low":  hi - zone_h,
-                "x_start": idx[i],
-            })
-
-        # Swing low → demand zone
-        if lo <= min(lows[i - pivot_bars: i + pivot_bars + 1]):
-            demand.append({
-                "type": "demand",
-                "high": lo + zone_h,
-                "low":  lo,
-                "x_start": idx[i],
-            })
-
-    def dedup(zones: list) -> list:
-        """Keep most recent zones, drop those whose midpoint is within 0.15% of an already-kept zone."""
-        out = []
-        for z in reversed(zones):
-            mid = (z["high"] + z["low"]) / 2
-            if not any(abs(mid - (o["high"] + o["low"]) / 2) / mid < 0.0015 for o in out):
-                out.append(z)
-            if len(out) >= max_per_type:
-                break
-        return out
-
-    return dedup(demand) + dedup(supply)
+    return buy_times, buy_prices, sell_times, sell_prices
 
 
 def _levels_key(symbol: str) -> str:
@@ -141,34 +104,8 @@ def render_chart_panel(symbol: str, height: int = 500):
 
     fig = go.Figure()
 
-    # ── Supply / demand zones as filled Scatter traces ───────────────────────
-    zones = _find_zones(df)
+    # ── Auto buy/sell signals (VWAP crossover + EMA confirmation) ────────────
     x_end = df.index[-1]
-    for zone in zones:
-        if zone["type"] == "demand":
-            fill_color   = "rgba(46,204,113,0.18)"
-            line_color   = "#2ecc71"
-            label        = "Demand"
-        else:
-            fill_color   = "rgba(231,76,60,0.18)"
-            line_color   = "#e74c3c"
-            label        = "Supply"
-
-        x0, x1 = zone["x_start"], x_end
-        y0, y1 = zone["low"], zone["high"]
-
-        # Draw zone as a closed filled polygon
-        fig.add_trace(go.Scatter(
-            x=[x0, x1, x1, x0, x0],
-            y=[y0, y0, y1, y1, y0],
-            fill="toself",
-            fillcolor=fill_color,
-            line=dict(color=line_color, width=1),
-            mode="lines",
-            name=label,
-            showlegend=False,
-            hoverinfo="skip",
-        ))
 
     # ── Candlesticks ─────────────────────────────────────────────────────────
     fig.add_trace(go.Candlestick(
@@ -198,6 +135,29 @@ def render_chart_panel(symbol: str, height: int = 500):
         mode="lines", name="EMA 20",
         line=dict(color="#1e40af", width=1.2),
     ))
+
+    # ── Buy/sell signals ─────────────────────────────────────────────────────
+    if interval in ("5m", "15m", "1h"):
+        vwap = _compute_vwap(df)
+        bt, bp, st2, sp = _find_signals(df, vwap)
+        if len(bt):
+            fig.add_trace(go.Scatter(
+                x=bt, y=bp,
+                mode="markers",
+                name="Buy",
+                marker=dict(symbol="triangle-up", size=12,
+                            color="#2ecc71", line=dict(color="#1a9954", width=1)),
+                hovertemplate="BUY %{y:.2f}<extra></extra>",
+            ))
+        if len(st2):
+            fig.add_trace(go.Scatter(
+                x=st2, y=sp,
+                mode="markers",
+                name="Sell",
+                marker=dict(symbol="triangle-down", size=12,
+                            color="#e74c3c", line=dict(color="#c0392b", width=1)),
+                hovertemplate="SELL %{y:.2f}<extra></extra>",
+            ))
 
     # ── Manual buy/sell level lines ──────────────────────────────────────────
     for lvl in st.session_state[_levels_key(symbol)]:
@@ -244,20 +204,6 @@ def render_chart_panel(symbol: str, height: int = 500):
         "modeBarButtonsToRemove": ["select2d", "lasso2d"],
         "displaylogo": False,
     })
-
-    # ── Zone count badge ─────────────────────────────────────────────────────
-    d_count = sum(1 for z in zones if z["type"] == "demand")
-    s_count = sum(1 for z in zones if z["type"] == "supply")
-    if zones:
-        st.markdown(
-            f'<div style="font-size:0.78em;color:#5577aa;margin-top:-8px;margin-bottom:4px;">'
-            f'Auto-detected: '
-            f'<span style="color:#2ecc71;font-weight:600;">{d_count} demand</span>'
-            f' &nbsp;·&nbsp; '
-            f'<span style="color:#e74c3c;font-weight:600;">{s_count} supply</span>'
-            f' zones</div>',
-            unsafe_allow_html=True,
-        )
 
     # ── Manual buy/sell level input ──────────────────────────────────────────
     with st.expander("Add Buy / Sell Level", expanded=False):
