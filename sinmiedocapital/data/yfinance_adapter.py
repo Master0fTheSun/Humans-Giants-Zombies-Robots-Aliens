@@ -461,16 +461,31 @@ def _fetch_macro() -> dict:
 # ---------------------------------------------------------------------------
 
 def _fetch_news() -> list:
+    """
+    Fetch news using ETF proxies — yfinance returns reliable news for equities
+    but almost nothing for futures symbols directly.
+      USO  = US Oil Fund ETF  → crude oil / MCL news
+      SPY  = S&P 500 ETF      → equity index / MES news
+    RSS feeds are used as fallback if yfinance returns empty.
+    """
     news = []
     seen = set()
 
-    for yf_sym, contract in [("CL=F", "MCL"), ("ES=F", "MES")]:
+    sources = [
+        # (yfinance ticker, RSS symbol for fallback, contract label)
+        ("USO",  "USO",   "MCL"),
+        ("XLE",  "XLE",   "MCL"),   # energy sector — extra crude headlines
+        ("SPY",  "SPY",   "MES"),
+        ("QQQ",  "QQQ",   "MES"),   # tech-heavy — extra index headlines
+    ]
+
+    for yf_sym, rss_sym, contract in sources:
         items_parsed = []
 
-        # Primary: yfinance
+        # Primary: yfinance (works well for ETFs)
         try:
             raw = yf.Ticker(yf_sym).news or []
-            for item in raw[:8]:
+            for item in raw[:6]:
                 parsed = _parse_news_item(item)
                 if parsed and parsed["headline"] not in seen:
                     seen.add(parsed["headline"])
@@ -479,15 +494,16 @@ def _fetch_news() -> list:
         except Exception:
             pass
 
-        # Fallback: Yahoo RSS if yfinance returned nothing
+        # Fallback: Yahoo RSS
         if not items_parsed:
-            for item in _fetch_news_rss(yf_sym, contract):
+            for item in _fetch_news_rss(rss_sym, contract):
                 if item["headline"] not in seen:
                     seen.add(item["headline"])
                     items_parsed.append(item)
 
         news.extend(items_parsed)
 
+    # Sort by time descending, cap at 12
     return news[:12]
 
 
