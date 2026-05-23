@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IncomOS — Business Command Center</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@0.344.0/dist/umd/lucide.min.js"></script>
+</head>
+<body>
+
+<div id="app">
+  <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-icon">⬡</div>
+      <div>
+        <div class="sidebar-logo-text">IncomOS</div>
+        <div class="sidebar-logo-sub">Business Command Center</div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-label">Navigation</div>
+      <div id="nav-items"></div>
+    </div>
+
+    <div class="sidebar-bottom">
+      <div class="sidebar-meta">v1.0 · Data stored locally</div>
+    </div>
+  </nav>
+
+  <!-- Main Area -->
+  <div id="main-area">
+    <header id="app-header"></header>
+
+    <div id="page-container">
+      <main id="main-content"></main>
+    </div>
+  </div>
+</div>
+
+<!-- Scripts — order matters: data → charts → modules → app -->
+<script src="js/data.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/modules/overview.js"></script>
+<script src="js/modules/writing.js"></script>
+<script src="js/modules/insurance.js"></script>
+<script src="js/modules/lyft.js"></script>
+<script src="js/modules/analytics.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>
