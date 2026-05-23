@@ -1,4 +1,4 @@
-"""Native Plotly candlestick charts with VWAP and manual buy/sell level markers."""
+"""Native Plotly candlestick charts with VWAP, EMA, supply/demand zones, and manual levels."""
 
 import streamlit as st
 import pandas as pd
@@ -26,40 +26,89 @@ def _compute_vwap(df: pd.DataFrame) -> pd.Series:
     return cum_tp / cum_vol.replace(0, float("nan"))
 
 
+def _find_zones(df: pd.DataFrame, lookback: int = 3,
+                impulse_mult: float = 1.8, max_per_type: int = 4) -> list:
+    """
+    Detect supply and demand zones from OHLCV data.
+
+    Logic:
+    - Compute rolling 20-bar average candle body size.
+    - A candle is an "impulse" if its body > impulse_mult * average.
+    - The zone is the price range of the `lookback` candles immediately
+      before the impulse (the base / consolidation before the move).
+    - Bullish impulse → demand zone (green).
+    - Bearish impulse → supply zone (red).
+    - Keep only the most recent max_per_type of each type.
+    - Merge zones that overlap by more than 50% of their height.
+    """
+    if len(df) < lookback + 20:
+        return []
+
+    bodies    = (df["Close"] - df["Open"]).abs()
+    avg_body  = bodies.rolling(20, min_periods=10).mean()
+    price_range = df["High"].max() - df["Low"].min()
+    min_height  = price_range * 0.003  # ignore hairline zones
+
+    demand, supply = [], []
+
+    for i in range(lookback, len(df)):
+        body = bodies.iloc[i]
+        avg  = avg_body.iloc[i]
+        if pd.isna(avg) or avg < 1e-9:
+            continue
+        if body < impulse_mult * avg:
+            continue
+
+        base      = df.iloc[i - lookback: i]
+        zone_high = base["High"].max()
+        zone_low  = base["Low"].min()
+
+        if zone_high - zone_low < min_height:
+            continue
+
+        zone = {
+            "high":    zone_high,
+            "low":     zone_low,
+            "x_start": base.index[0],
+        }
+        if df["Close"].iloc[i] > df["Open"].iloc[i]:
+            demand.append(zone)
+        else:
+            supply.append(zone)
+
+    def dedupe(zones: list) -> list:
+        """Remove zones that are mostly contained within a later zone."""
+        out = []
+        for z in zones:
+            overlap = False
+            for o in out:
+                inter_h = min(z["high"], o["high"])
+                inter_l = max(z["low"],  o["low"])
+                if inter_h > inter_l:
+                    overlap_h = inter_h - inter_l
+                    z_h = z["high"] - z["low"]
+                    if z_h > 0 and overlap_h / z_h > 0.5:
+                        overlap = True
+                        break
+            if not overlap:
+                out.append(z)
+        return out
+
+    demand = dedupe(demand[-max_per_type * 2:])[-max_per_type:]
+    supply = dedupe(supply[-max_per_type * 2:])[-max_per_type:]
+
+    result = [{"type": "demand", **z} for z in demand]
+    result += [{"type": "supply", **z} for z in supply]
+    return result
+
+
 def _levels_key(symbol: str) -> str:
     return f"trade_levels_{symbol}"
 
 
-def _add_level_traces(fig: go.Figure, symbol: str, x_start, x_end):
-    levels = st.session_state.get(_levels_key(symbol), [])
-    for lvl in levels:
-        color = "#2ecc71" if lvl["direction"] == "Buy" else "#e74c3c"
-        label = f"{lvl['direction']} {lvl['price']:.2f}"
-        if lvl.get("note"):
-            label += f"  {lvl['note']}"
-        fig.add_shape(
-            type="line",
-            x0=x_start, x1=x_end,
-            y0=lvl["price"], y1=lvl["price"],
-            line=dict(color=color, width=1.5, dash="dash"),
-            xref="x", yref="y",
-        )
-        fig.add_annotation(
-            x=x_end,
-            y=lvl["price"],
-            text=label,
-            showarrow=False,
-            xanchor="right",
-            font=dict(color=color, size=10),
-            bgcolor="rgba(255,255,255,0.7)",
-            borderpad=2,
-        )
-
-
-def render_chart_panel(symbol: str, height: int = 480):
+def render_chart_panel(symbol: str, height: int = 500):
     ticker_sym = _TICKER_MAP.get(symbol, symbol)
 
-    # Init session state
     interval_key = f"chart_interval_{symbol}"
     if interval_key not in st.session_state:
         st.session_state[interval_key] = "5m"
@@ -107,13 +156,44 @@ def render_chart_panel(symbol: str, height: int = 480):
 
     fig = go.Figure()
 
-    # Candlesticks
+    # ── Supply / demand zones (drawn first so candles sit on top) ────────────
+    zones = _find_zones(df)
+    x_end = df.index[-1]
+    for zone in zones:
+        if zone["type"] == "demand":
+            fill  = "rgba(46,204,113,0.12)"
+            border = "#2ecc71"
+            label  = "Demand"
+        else:
+            fill  = "rgba(231,76,60,0.12)"
+            border = "#e74c3c"
+            label  = "Supply"
+
+        fig.add_shape(
+            type="rect",
+            x0=zone["x_start"], x1=x_end,
+            y0=zone["low"],     y1=zone["high"],
+            fillcolor=fill,
+            line=dict(color=border, width=0.8),
+            xref="x", yref="y",
+            layer="below",
+        )
+        fig.add_annotation(
+            x=x_end,
+            y=(zone["high"] + zone["low"]) / 2,
+            text=f"<b>{label}</b>",
+            showarrow=False,
+            xanchor="right",
+            font=dict(color=border, size=9),
+            bgcolor="rgba(255,255,255,0.75)",
+            borderpad=2,
+        )
+
+    # ── Candlesticks ─────────────────────────────────────────────────────────
     fig.add_trace(go.Candlestick(
         x=df.index,
-        open=df["Open"],
-        high=df["High"],
-        low=df["Low"],
-        close=df["Close"],
+        open=df["Open"], high=df["High"],
+        low=df["Low"],   close=df["Close"],
         name=symbol,
         increasing_line_color="#2ecc71",
         decreasing_line_color="#e74c3c",
@@ -121,7 +201,7 @@ def render_chart_panel(symbol: str, height: int = 480):
         decreasing_fillcolor="#e74c3c",
     ))
 
-    # VWAP
+    # ── VWAP ─────────────────────────────────────────────────────────────────
     if interval in ("5m", "15m", "1h"):
         vwap = _compute_vwap(df)
         fig.add_trace(go.Scatter(
@@ -130,7 +210,7 @@ def render_chart_panel(symbol: str, height: int = 480):
             line=dict(color="#f39c12", width=1.5, dash="dot"),
         ))
 
-    # EMA 20
+    # ── EMA 20 ───────────────────────────────────────────────────────────────
     ema20 = df["Close"].ewm(span=20, adjust=False).mean()
     fig.add_trace(go.Scatter(
         x=df.index, y=ema20,
@@ -138,8 +218,27 @@ def render_chart_panel(symbol: str, height: int = 480):
         line=dict(color="#1e40af", width=1.2),
     ))
 
-    # Buy/sell level lines
-    _add_level_traces(fig, symbol, df.index[0], df.index[-1])
+    # ── Manual buy/sell level lines ──────────────────────────────────────────
+    for lvl in st.session_state[_levels_key(symbol)]:
+        color = "#2ecc71" if lvl["direction"] == "Buy" else "#e74c3c"
+        label = f"{lvl['direction']} {lvl['price']:.2f}"
+        if lvl.get("note"):
+            label += f"  {lvl['note']}"
+        fig.add_shape(
+            type="line",
+            x0=df.index[0], x1=x_end,
+            y0=lvl["price"], y1=lvl["price"],
+            line=dict(color=color, width=1.5, dash="dash"),
+            xref="x", yref="y",
+        )
+        fig.add_annotation(
+            x=x_end, y=lvl["price"],
+            text=label, showarrow=False,
+            xanchor="right",
+            font=dict(color=color, size=10),
+            bgcolor="rgba(255,255,255,0.8)",
+            borderpad=2,
+        )
 
     fig.update_layout(
         height=height,
@@ -165,7 +264,21 @@ def render_chart_panel(symbol: str, height: int = 480):
         "displaylogo": False,
     })
 
-    # ── Buy / Sell level input ───────────────────────────────────────────────
+    # ── Zone count badge ─────────────────────────────────────────────────────
+    d_count = sum(1 for z in zones if z["type"] == "demand")
+    s_count = sum(1 for z in zones if z["type"] == "supply")
+    if zones:
+        st.markdown(
+            f'<div style="font-size:0.78em;color:#5577aa;margin-top:-8px;margin-bottom:4px;">'
+            f'Auto-detected: '
+            f'<span style="color:#2ecc71;font-weight:600;">{d_count} demand</span>'
+            f' &nbsp;·&nbsp; '
+            f'<span style="color:#e74c3c;font-weight:600;">{s_count} supply</span>'
+            f' zones</div>',
+            unsafe_allow_html=True,
+        )
+
+    # ── Manual buy/sell level input ──────────────────────────────────────────
     with st.expander("Add Buy / Sell Level", expanded=False):
         c1, c2, c3, c4 = st.columns([1, 1, 2, 1])
         with c1:
@@ -190,11 +303,12 @@ def render_chart_panel(symbol: str, height: int = 480):
                     st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
-        # Current levels list with remove buttons
         levels = st.session_state[_levels_key(symbol)]
         if levels:
-            st.markdown('<div style="font-size:0.8em;color:#5577aa;margin-top:4px;">Active levels:</div>',
-                        unsafe_allow_html=True)
+            st.markdown(
+                '<div style="font-size:0.8em;color:#5577aa;margin-top:4px;">Active levels:</div>',
+                unsafe_allow_html=True,
+            )
             for idx, lvl in enumerate(levels):
                 color = "#2ecc71" if lvl["direction"] == "Buy" else "#e74c3c"
                 lc1, lc2 = st.columns([5, 1])
