@@ -1,5 +1,5 @@
 """
-MCL / MES Trader Dashboard
+Sin Miedo Capital — MCL / MES Dashboard
 Run: streamlit run app.py
 """
 
@@ -115,7 +115,7 @@ with hcol1:
     st.markdown(
         f'<div style="padding:4px 0;">'
         f'<span style="font-size:1.4em;font-weight:700;color:#74b9ff;">Sin Miedo Capital</span>'
-        f'<span style="color:#636e72;font-size:0.9em;"> &nbsp;MCL / MES Dashboard</span>'
+        f'<span style="color:#636e72;font-size:0.9em;"> &nbsp;MCL / MES Futures Dashboard</span>'
         f'</div>'
         f'<div style="color:#636e72;font-size:0.8em;">{data["session_date"]}</div>',
         unsafe_allow_html=True,
@@ -178,11 +178,11 @@ st.markdown("---")
 t1, t2 = st.columns(2)
 
 with t1:
-    st.markdown("## MCL — Daily Thesis & Trade Plan")
+    st.markdown("## MCL — Sin Miedo Capital Thesis & Trade Plan")
     render_thesis(mcl)
 
 with t2:
-    st.markdown("## MES — Daily Thesis & Trade Plan")
+    st.markdown("## MES — Sin Miedo Capital Thesis & Trade Plan")
     render_thesis(mes)
 
 st.markdown("---")
@@ -231,7 +231,7 @@ with manual_col:
 
 st.markdown(
     '<div style="color:#2d2d4e;font-size:0.75em;text-align:center;padding-top:12px;">'
-    'For informational use only. Not financial advice. Data may be delayed or mocked.'
+    'Sin Miedo Capital — For internal use only. Not financial advice. Data may be delayed.'
     '</div>',
     unsafe_allow_html=True,
 )
