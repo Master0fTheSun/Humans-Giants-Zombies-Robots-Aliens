@@ -61,6 +61,17 @@ const DEFAULT_DATA = {
       { quarter: 'Q2 2025', amount: 510, paid: false, dueDate: '2025-06-15' }
     ]
   },
+  trading: {
+    sessions: [
+      { id: 't1', date: '2026-05-20', instrument: 'MES', contracts: 2, pnl: 185, trades: 4, notes: 'Clean trend day' },
+      { id: 't2', date: '2026-05-18', instrument: 'MNQ', contracts: 1, pnl: -62, trades: 3, notes: 'Choppy, stopped early' },
+      { id: 't3', date: '2026-05-16', instrument: 'MES', contracts: 2, pnl: 310, trades: 5, notes: 'Strong momentum' },
+      { id: 't4', date: '2026-05-14', instrument: 'MES', contracts: 1, pnl: -95, trades: 4, notes: '' },
+      { id: 't5', date: '2026-05-12', instrument: 'MNQ', contracts: 1, pnl: 220, trades: 3, notes: 'CPI day — good setup' },
+      { id: 't6', date: '2026-05-10', instrument: 'MES', contracts: 2, pnl: 140, trades: 2, notes: '' }
+    ],
+    startingBalance: 5000
+  },
   settings: {
     name: 'Business Owner',
     monthlyGoal: 8000,
@@ -93,11 +104,8 @@ const EMPTY_DATA = {
   writing: { clients: [], invoices: [] },
   insurance: { clients: [], commissionHistory: [] },
   lyft: { trips: [], maintenance: [] },
-  taxes: {
-    expenses: [],
-    taxReserveRate: 0.28,
-    quarterlyPayments: []
-  },
+  taxes: { expenses: [], taxReserveRate: 0.28, quarterlyPayments: [] },
+  trading: { sessions: [], startingBalance: 5000 },
   settings: {
     name: '',
     monthlyGoal: 8000,
@@ -124,13 +132,35 @@ function getMonthlyIncome() {
     .reduce((sum, c) => sum + c.commission, 0);
 
   const lyftThisMonth = getLyftMonthly();
+  const tradingThisMonth = getTradingMonthly().netPnl;
 
   return {
     writing: writingRevenue,
     insurance: insuranceCommissions,
     lyft: lyftThisMonth.net,
-    total: writingRevenue + insuranceCommissions + lyftThisMonth.net
+    trading: tradingThisMonth,
+    total: writingRevenue + insuranceCommissions + lyftThisMonth.net + Math.max(0, tradingThisMonth)
   };
+}
+
+function getTradingMonthly() {
+  const now = new Date();
+  const month = now.getMonth();
+  const year = now.getFullYear();
+  const sessions = (AppData.trading?.sessions || []).filter(s => {
+    const d = new Date(s.date);
+    return d.getMonth() === month && d.getFullYear() === year;
+  });
+  const netPnl = sessions.reduce((sum, s) => sum + s.pnl, 0);
+  const wins = sessions.filter(s => s.pnl > 0).length;
+  const totalSessions = sessions.length;
+  const totalTrades = sessions.reduce((sum, s) => sum + (s.trades || 0), 0);
+  const avgWin = wins > 0 ? sessions.filter(s => s.pnl > 0).reduce((sum, s) => sum + s.pnl, 0) / wins : 0;
+  const losses = sessions.filter(s => s.pnl < 0).length;
+  const avgLoss = losses > 0 ? Math.abs(sessions.filter(s => s.pnl < 0).reduce((sum, s) => sum + s.pnl, 0) / losses) : 0;
+  const bestDay = sessions.length > 0 ? Math.max(...sessions.map(s => s.pnl)) : 0;
+  const worstDay = sessions.length > 0 ? Math.min(...sessions.map(s => s.pnl)) : 0;
+  return { netPnl, wins, losses, totalSessions, totalTrades, avgWin, avgLoss, bestDay, worstDay, winRate: totalSessions > 0 ? (wins / totalSessions) * 100 : 0 };
 }
 
 function getLyftMonthly() {

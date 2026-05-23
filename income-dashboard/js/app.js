@@ -2,6 +2,7 @@
 const pageRenderers = {
   overview: renderOverview,
   analytics: renderAnalytics,
+  trading: renderTrading,
   writing: renderWriting,
   insurance: renderInsurance,
   lyft: renderLyft,
@@ -13,6 +14,7 @@ const pageRenderers = {
 const pageTitles = {
   overview: 'Dashboard',
   analytics: 'Analytics',
+  trading: 'Trading',
   writing: 'Writing / B2B',
   insurance: 'Insurance',
   lyft: 'Lyft',
