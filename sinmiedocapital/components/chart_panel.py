@@ -20,32 +20,48 @@ _PERIOD_MAP = {
 
 
 def _compute_vwap(df: pd.DataFrame) -> pd.Series:
+    """VWAP that resets each calendar day — standard session VWAP."""
     typical = (df["High"] + df["Low"] + df["Close"]) / 3
-    cum_vol  = df["Volume"].cumsum()
-    cum_tp   = (typical * df["Volume"]).cumsum()
-    return cum_tp / cum_vol.replace(0, float("nan"))
+    tv = typical * df["Volume"]
+    dates = df.index.normalize()
+    cum_tv  = tv.groupby(dates).cumsum()
+    cum_vol = df["Volume"].groupby(dates).cumsum()
+    return cum_tv / cum_vol.replace(0, float("nan"))
+
+
+def _compute_rsi(close: pd.Series, period: int = 14) -> pd.Series:
+    delta = close.diff()
+    gain  = delta.clip(lower=0).ewm(span=period, adjust=False).mean()
+    loss  = (-delta.clip(upper=0)).ewm(span=period, adjust=False).mean()
+    rs    = gain / loss.replace(0, float("nan"))
+    return 100 - (100 / (1 + rs))
 
 
 def _find_signals(df: pd.DataFrame, vwap: pd.Series) -> tuple:
     """
-    Detect buy/sell signals from VWAP crossovers confirmed by EMA 20 direction.
-    Returns (buy_times, buy_prices, sell_times, sell_prices).
+    Buy/sell signals with three-layer confirmation:
+      1. VWAP crossover (price crosses the session VWAP)
+      2. EMA 20 trend direction (close on the right side of EMA)
+      3. RSI filter — no buys when overbought (>65), no sells when oversold (<35)
+      4. Volume confirmation — crossover bar must have above-average volume
     """
-    ema20 = df["Close"].ewm(span=20, adjust=False).mean()
-    close = df["Close"]
+    close  = df["Close"]
+    ema20  = close.ewm(span=20, adjust=False).mean()
+    rsi    = _compute_rsi(close)
+    avg_vol = df["Volume"].rolling(20, min_periods=5).mean()
+    high_vol = df["Volume"] > avg_vol * 1.05
 
-    above = close > vwap
-    cross_up   = above & ~above.shift(1).fillna(False)  # just crossed above
-    cross_down = ~above & above.shift(1).fillna(False)  # just crossed below
+    above      = close > vwap
+    cross_up   = above  & ~above.shift(1).fillna(False)
+    cross_down = ~above &  above.shift(1).fillna(False)
 
-    # Confirm with EMA: buy only when close > EMA, sell only when close < EMA
-    buy_mask  = cross_up  & (close > ema20)
-    sell_mask = cross_down & (close < ema20)
+    buy_mask  = cross_up   & (close > ema20) & (rsi < 65) & high_vol
+    sell_mask = cross_down & (close < ema20) & (rsi > 35) & high_vol
 
-    buy_times  = df.index[buy_mask]
-    buy_prices = df["Low"][buy_mask] * 0.9995   # just below the bar
-    sell_times = df.index[sell_mask]
-    sell_prices = df["High"][sell_mask] * 1.0005  # just above the bar
+    buy_times   = df.index[buy_mask]
+    buy_prices  = df["Low"][buy_mask]  * 0.9995
+    sell_times  = df.index[sell_mask]
+    sell_prices = df["High"][sell_mask] * 1.0005
 
     return buy_times, buy_prices, sell_times, sell_prices
 
