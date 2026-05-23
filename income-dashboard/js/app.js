@@ -6,6 +6,7 @@ const pageRenderers = {
   writing: renderWriting,
   insurance: renderInsurance,
   lyft: renderLyft,
+  market: renderMarket,
   taxes: renderTaxes,
   clients: renderClients,
   settings: renderSettings
@@ -18,6 +19,7 @@ const pageTitles = {
   writing: 'Writing / B2B',
   insurance: 'Insurance',
   lyft: 'Lyft',
+  market: 'Farmers Market',
   taxes: 'Taxes & Expenses',
   clients: 'Clients',
   settings: 'Settings'

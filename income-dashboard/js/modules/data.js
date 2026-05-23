@@ -72,6 +72,18 @@ const DEFAULT_DATA = {
     ],
     startingBalance: 5000
   },
+  market: {
+    products: [
+      { id: 'p1', name: 'Lavender Sugar Scrub', price: 14, cost: 3.50, unit: '8oz jar' },
+      { id: 'p2', name: 'Citrus Glow Scrub', price: 14, cost: 3.50, unit: '8oz jar' },
+      { id: 'p3', name: 'Rose Vanilla Scrub', price: 16, cost: 4.00, unit: '8oz jar' },
+      { id: 'p4', name: 'Scrub Bundle (3-pack)', price: 36, cost: 9.50, unit: 'Bundle' }
+    ],
+    events: [
+      { id: 'e1', date: '2026-05-18', location: 'Downtown Farmers Market', revenue: 210, expenses: 25, unitsSold: 14, notes: 'Great foot traffic' },
+      { id: 'e2', date: '2026-05-11', location: 'Riverside Weekend Market', revenue: 168, expenses: 20, unitsSold: 11, notes: '' }
+    ]
+  },
   settings: {
     name: 'Business Owner',
     monthlyGoal: 8000,
@@ -106,6 +118,7 @@ const EMPTY_DATA = {
   lyft: { trips: [], maintenance: [] },
   taxes: { expenses: [], taxReserveRate: 0.28, quarterlyPayments: [] },
   trading: { sessions: [], startingBalance: 5000 },
+  market: { products: [], events: [] },
   settings: {
     name: '',
     monthlyGoal: 8000,
@@ -133,14 +146,31 @@ function getMonthlyIncome() {
 
   const lyftThisMonth = getLyftMonthly();
   const tradingThisMonth = getTradingMonthly().netPnl;
+  const marketThisMonth = getMarketMonthly().netProfit;
 
   return {
     writing: writingRevenue,
     insurance: insuranceCommissions,
     lyft: lyftThisMonth.net,
     trading: tradingThisMonth,
-    total: writingRevenue + insuranceCommissions + lyftThisMonth.net + Math.max(0, tradingThisMonth)
+    market: marketThisMonth,
+    total: writingRevenue + insuranceCommissions + lyftThisMonth.net + Math.max(0, tradingThisMonth) + marketThisMonth
   };
+}
+
+function getMarketMonthly() {
+  const now = new Date();
+  const month = now.getMonth();
+  const year = now.getFullYear();
+  const events = (AppData.market?.events || []).filter(e => {
+    const d = new Date(e.date);
+    return d.getMonth() === month && d.getFullYear() === year;
+  });
+  const revenue = events.reduce((s, e) => s + e.revenue, 0);
+  const expenses = events.reduce((s, e) => s + e.expenses, 0);
+  const unitsSold = events.reduce((s, e) => s + (e.unitsSold || 0), 0);
+  const bestEvent = events.length > 0 ? events.reduce((best, e) => e.revenue > best.revenue ? e : best, events[0]) : null;
+  return { revenue, expenses, netProfit: revenue - expenses, unitsSold, events: events.length, bestEvent };
 }
 
 function getTradingMonthly() {
