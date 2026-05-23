@@ -17,7 +17,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# --- Dark theme CSS ---
+# --- Theme CSS ---
 st.markdown(
     """
     <style>
@@ -31,6 +31,27 @@ st.markdown(
     /* Headers */
     h1, h2, h3 { color: #0a1428 !important; }
     h2 { font-size: 1.1rem !important; border-bottom: 1px solid #c5d5ee; padding-bottom: 4px; }
+
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 4px;
+        background-color: #eef3ff;
+        border-radius: 8px;
+        padding: 4px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        background-color: transparent;
+        border-radius: 6px;
+        color: #5577aa;
+        font-weight: 600;
+        font-size: 0.88em;
+        padding: 6px 16px;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #1a3060 !important;
+        color: #ffffff !important;
+    }
+    .stTabs [data-baseweb="tab-panel"] { padding-top: 1rem; }
 
     /* Alerts / info boxes */
     .stAlert { background-color: #eef3ff !important; border-radius: 6px; }
@@ -58,6 +79,9 @@ st.markdown(
 
     /* Number input */
     input[type="number"] { background: #ffffff !important; color: #0a1428 !important; }
+
+    /* Checkboxes */
+    .stCheckbox label { color: #0a1428 !important; }
 
     /* Dividers */
     hr { border-color: #c5d5ee !important; }
@@ -95,6 +119,9 @@ from components.thesis import render_thesis
 from components.macro_panel import render_macro_panel
 from components.news_feed import render_news_feed
 from components.manual_input import render_manual_input_panel
+from components.chart_panel import render_chart_panel
+from components.rr_calculator import render_rr_calculator
+from components.pre_session_checklist import render_pre_session_checklist
 from utils.helpers import risk_badge
 
 # ---------------------------------------------------------------------------
@@ -134,7 +161,7 @@ with hcol3:
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-# Live-mode warning
+# Live-mode / market status strip
 if data.get("live_warning"):
     st.warning(data["live_warning"])
 
@@ -156,89 +183,110 @@ st.markdown(
 st.markdown("---")
 
 # ---------------------------------------------------------------------------
-# Main two-column layout: MCL | MES
+# Contracts
 # ---------------------------------------------------------------------------
 
 mcl = data["contracts"]["MCL"]
 mes = data["contracts"]["MES"]
 
-col_mcl, col_sep, col_mes = st.columns([10, 1, 10])
+# ---------------------------------------------------------------------------
+# Tabs
+# ---------------------------------------------------------------------------
 
-with col_mcl:
-    render_contract_card(mcl)
+tab_overview, tab_charts, tab_thesis, tab_risk, tab_news = st.tabs([
+    "📊 Overview",
+    "📈 Charts",
+    "📋 Thesis & Plan",
+    "🧮 Risk Tools",
+    "📰 News & Macro",
+])
 
-with col_sep:
+# ── Tab 1: Overview ─────────────────────────────────────────────────────────
+with tab_overview:
+    col_mcl, col_sep, col_mes = st.columns([10, 1, 10])
+
+    with col_mcl:
+        render_contract_card(mcl)
+
+    with col_sep:
+        st.markdown(
+            '<div style="border-left:1px solid #c5d5ee;height:100%;'
+            'min-height:600px;margin:0 auto;width:1px;"></div>',
+            unsafe_allow_html=True,
+        )
+
+    with col_mes:
+        render_contract_card(mes)
+
+# ── Tab 2: Charts ────────────────────────────────────────────────────────────
+with tab_charts:
     st.markdown(
-        '<div style="border-left:1px solid #2d2d4e;height:100%;min-height:600px;margin:0 auto;width:1px;"></div>',
+        '<div style="color:#5577aa;font-size:0.8em;margin-bottom:8px;">'
+        'Live TradingView charts — 5-min bars with VWAP & RSI. '
+        'Use the toolbar to change timeframe, draw levels, or switch symbols.'
+        '</div>',
         unsafe_allow_html=True,
     )
+    ch1, ch2 = st.columns(2)
+    with ch1:
+        st.markdown("### MCL — Micro Crude Oil")
+        render_chart_panel("MCL")
+    with ch2:
+        st.markdown("### MES — Micro E-mini S&P")
+        render_chart_panel("MES")
 
-with col_mes:
-    render_contract_card(mes)
+# ── Tab 3: Thesis & Plan ─────────────────────────────────────────────────────
+with tab_thesis:
+    t1, t2 = st.columns(2)
+    with t1:
+        st.markdown("## MCL — Thesis & Trade Plan")
+        render_thesis(mcl)
+    with t2:
+        st.markdown("## MES — Thesis & Trade Plan")
+        render_thesis(mes)
 
-st.markdown("---")
+# ── Tab 4: Risk Tools ─────────────────────────────────────────────────────────
+with tab_risk:
+    rr_col, chk_col = st.columns([1, 1])
 
-# ---------------------------------------------------------------------------
-# Thesis + Trade Plan row (two columns, one per contract)
-# ---------------------------------------------------------------------------
+    with rr_col:
+        render_rr_calculator()
 
-t1, t2 = st.columns(2)
+        st.markdown("---")
+        st.markdown("## Trade Notes")
+        st.text_area(
+            "notes",
+            height=160,
+            key="user_notes",
+            placeholder=(
+                "Type your own thesis here...\n\n"
+                "e.g. Bias long MCL on API draw. Watch 78.00 VWAP reclaim. "
+                "Size down before ISM. MES — fade 5325 unless ISM beats."
+            ),
+            label_visibility="collapsed",
+        )
 
-with t1:
-    st.markdown("## MCL — Sin Miedo Capital Thesis & Trade Plan")
-    render_thesis(mcl)
+        st.markdown("---")
+        render_manual_input_panel()
 
-with t2:
-    st.markdown("## MES — Sin Miedo Capital Thesis & Trade Plan")
-    render_thesis(mes)
+    with chk_col:
+        render_pre_session_checklist()
 
-st.markdown("---")
-
-# ---------------------------------------------------------------------------
-# Macro panel + News feed (side by side)
-# ---------------------------------------------------------------------------
-
-mac_col, news_col = st.columns([5, 4])
-
-with mac_col:
-    render_macro_panel(data["macro"])
-
-with news_col:
-    render_news_feed(data["news"])
-
-st.markdown("---")
-
-# ---------------------------------------------------------------------------
-# Notes area + Manual input
-# ---------------------------------------------------------------------------
-
-notes_col, manual_col = st.columns([1, 1])
-
-with notes_col:
-    st.markdown("## Sin Miedo Capital — Trade Notes")
-    st.text_area(
-        "notes",
-        height=180,
-        key="user_notes",
-        placeholder=(
-            "Type your own thesis here...\n\n"
-            "e.g. Bias long MCL on API draw. Watch 78.00 VWAP reclaim. "
-            "Size down before ISM. MES — fade 5325 unless ISM beats."
-        ),
-        label_visibility="collapsed",
-    )
-
-with manual_col:
-    st.markdown("## Manual Data Input")
-    render_manual_input_panel()
+# ── Tab 5: News & Macro ───────────────────────────────────────────────────────
+with tab_news:
+    mac_col, news_col = st.columns([5, 4])
+    with mac_col:
+        render_macro_panel(data["macro"])
+    with news_col:
+        render_news_feed(data["news"])
 
 # ---------------------------------------------------------------------------
 # Footer
 # ---------------------------------------------------------------------------
 
 st.markdown(
-    '<div style="color:#2d2d4e;font-size:0.75em;text-align:center;padding-top:12px;">'
-    '<span style="color:#5577aa;">Sin Miedo Capital — For internal use only. Not financial advice. Data may be delayed.</span>'
+    '<div style="color:#5577aa;font-size:0.75em;text-align:center;padding-top:12px;">'
+    'Sin Miedo Capital — For internal use only. Not financial advice. Data may be delayed.'
     '</div>',
     unsafe_allow_html=True,
 )

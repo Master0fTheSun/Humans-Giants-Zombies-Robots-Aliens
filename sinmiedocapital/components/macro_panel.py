@@ -33,14 +33,14 @@ def render_macro_panel(macro: dict):
     with m2:
         st.markdown("**10Y Yield**")
         st.markdown(
-            f'<span style="font-size:1.4em;font-weight:700;color:#dfe6e9;">{yield_val:.2f}%</span>'
+            f'<span style="font-size:1.4em;font-weight:700;color:#0a1428;">{yield_val:.2f}%</span>'
             f'<span style="font-size:0.85em;color:{delta_color(yield_ch)};"> {fmt_change(yield_ch, 2)}</span>',
             unsafe_allow_html=True,
         )
     with m3:
         st.markdown("**DXY**")
         st.markdown(
-            f'<span style="font-size:1.4em;font-weight:700;color:#dfe6e9;">{dxy:.2f}</span>'
+            f'<span style="font-size:1.4em;font-weight:700;color:#0a1428;">{dxy:.2f}</span>'
             f'<span style="font-size:0.85em;color:{delta_color(dxy_ch)};"> {fmt_change(dxy_ch, 2)}</span>',
             unsafe_allow_html=True,
         )
