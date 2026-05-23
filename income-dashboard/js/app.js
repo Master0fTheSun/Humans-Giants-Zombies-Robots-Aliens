@@ -6,7 +6,8 @@ const pageRenderers = {
   insurance: renderInsurance,
   lyft: renderLyft,
   taxes: renderTaxes,
-  clients: renderClients
+  clients: renderClients,
+  settings: renderSettings
 };
 
 const pageTitles = {
@@ -16,7 +17,8 @@ const pageTitles = {
   insurance: 'Insurance',
   lyft: 'Lyft',
   taxes: 'Taxes & Expenses',
-  clients: 'Clients'
+  clients: 'Clients',
+  settings: 'Settings'
 };
 
 let currentPage = 'overview';
