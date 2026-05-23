@@ -26,80 +26,65 @@ def _compute_vwap(df: pd.DataFrame) -> pd.Series:
     return cum_tp / cum_vol.replace(0, float("nan"))
 
 
-def _find_zones(df: pd.DataFrame, lookback: int = 3,
-                impulse_mult: float = 1.8, max_per_type: int = 4) -> list:
+def _find_zones(df: pd.DataFrame, max_per_type: int = 4) -> list:
     """
-    Detect supply and demand zones from OHLCV data.
+    Detect supply/demand zones using swing high/low pivot detection.
 
-    Logic:
-    - Compute rolling 20-bar average candle body size.
-    - A candle is an "impulse" if its body > impulse_mult * average.
-    - The zone is the price range of the `lookback` candles immediately
-      before the impulse (the base / consolidation before the move).
-    - Bullish impulse → demand zone (green).
-    - Bearish impulse → supply zone (red).
-    - Keep only the most recent max_per_type of each type.
-    - Merge zones that overlap by more than 50% of their height.
+    A swing high is a bar whose High is the highest within pivot_bars on
+    each side — marks a supply zone. A swing low marks a demand zone.
+    Zone height = the candle's full range (High - Low), minimum 0.1% of price.
     """
-    if len(df) < lookback + 20:
+    n = len(df)
+    pivot_bars = max(3, min(8, n // 25))
+    if n < pivot_bars * 2 + 1:
         return []
 
-    bodies    = (df["Close"] - df["Open"]).abs()
-    avg_body  = bodies.rolling(20, min_periods=10).mean()
-    price_range = df["High"].max() - df["Low"].min()
-    min_height  = price_range * 0.003  # ignore hairline zones
+    highs  = df["High"].values
+    lows   = df["Low"].values
+    opens  = df["Open"].values
+    closes = df["Close"].values
+    idx    = df.index
+
+    avg_range = (df["High"] - df["Low"]).mean()
+    min_height = avg_range * 0.2  # zone must be at least 20% of avg bar range
 
     demand, supply = [], []
 
-    for i in range(lookback, len(df)):
-        body = bodies.iloc[i]
-        avg  = avg_body.iloc[i]
-        if pd.isna(avg) or avg < 1e-9:
-            continue
-        if body < impulse_mult * avg:
-            continue
+    for i in range(pivot_bars, n - pivot_bars):
+        hi = highs[i]
+        lo = lows[i]
+        zone_h = max(hi - lo, min_height)
 
-        base      = df.iloc[i - lookback: i]
-        zone_high = base["High"].max()
-        zone_low  = base["Low"].min()
+        # Swing high → supply zone
+        if hi >= max(highs[i - pivot_bars: i + pivot_bars + 1]):
+            supply.append({
+                "type": "supply",
+                "high": hi,
+                "low":  hi - zone_h,
+                "x_start": idx[i],
+            })
 
-        if zone_high - zone_low < min_height:
-            continue
+        # Swing low → demand zone
+        if lo <= min(lows[i - pivot_bars: i + pivot_bars + 1]):
+            demand.append({
+                "type": "demand",
+                "high": lo + zone_h,
+                "low":  lo,
+                "x_start": idx[i],
+            })
 
-        zone = {
-            "high":    zone_high,
-            "low":     zone_low,
-            "x_start": base.index[0],
-        }
-        if df["Close"].iloc[i] > df["Open"].iloc[i]:
-            demand.append(zone)
-        else:
-            supply.append(zone)
-
-    def dedupe(zones: list) -> list:
-        """Remove zones that are mostly contained within a later zone."""
+    def dedup(zones: list) -> list:
+        """Keep most recent zones, drop those whose midpoint is within 0.15% of an already-kept zone."""
         out = []
-        for z in zones:
-            overlap = False
-            for o in out:
-                inter_h = min(z["high"], o["high"])
-                inter_l = max(z["low"],  o["low"])
-                if inter_h > inter_l:
-                    overlap_h = inter_h - inter_l
-                    z_h = z["high"] - z["low"]
-                    if z_h > 0 and overlap_h / z_h > 0.5:
-                        overlap = True
-                        break
-            if not overlap:
+        for z in reversed(zones):
+            mid = (z["high"] + z["low"]) / 2
+            if not any(abs(mid - (o["high"] + o["low"]) / 2) / mid < 0.0015 for o in out):
                 out.append(z)
+            if len(out) >= max_per_type:
+                break
         return out
 
-    demand = dedupe(demand[-max_per_type * 2:])[-max_per_type:]
-    supply = dedupe(supply[-max_per_type * 2:])[-max_per_type:]
-
-    result = [{"type": "demand", **z} for z in demand]
-    result += [{"type": "supply", **z} for z in supply]
-    return result
+    return dedup(demand) + dedup(supply)
 
 
 def _levels_key(symbol: str) -> str:
