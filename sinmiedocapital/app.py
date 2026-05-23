@@ -11,7 +11,7 @@ import streamlit as st
 
 # --- Page config (must be first Streamlit call) ---
 st.set_page_config(
-    page_title="MCL / MES Dashboard",
+    page_title="Sin Miedo Capital",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -114,8 +114,8 @@ hcol1, hcol2, hcol3 = st.columns([3, 1, 1])
 with hcol1:
     st.markdown(
         f'<div style="padding:4px 0;">'
-        f'<span style="font-size:1.4em;font-weight:700;color:#74b9ff;">MCL / MES</span>'
-        f'<span style="color:#636e72;font-size:0.9em;"> &nbsp;Trader Dashboard</span>'
+        f'<span style="font-size:1.4em;font-weight:700;color:#74b9ff;">Sin Miedo Capital</span>'
+        f'<span style="color:#636e72;font-size:0.9em;"> &nbsp;MCL / MES Dashboard</span>'
         f'</div>'
         f'<div style="color:#636e72;font-size:0.8em;">{data["session_date"]}</div>',
         unsafe_allow_html=True,
