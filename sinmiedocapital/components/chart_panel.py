@@ -3,10 +3,10 @@
 import streamlit.components.v1 as components
 
 
-# TradingView symbol map
+# TradingView symbol map — plain continuous contract format resolves reliably
 _TV_SYMBOLS = {
-    "MCL": "NYMEX:MCL1!",
-    "MES": "CME_MINI:MES1!",
+    "MCL": "MCL1!",
+    "MES": "MES1!",
 }
 
 
