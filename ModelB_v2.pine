@@ -211,25 +211,27 @@ plot(lastPL, "Swing Low",  color=color.new(color.lime, 50), linewidth=1)
 plot(useDisc and pivotsDefined ? midPoint : na, "Range Mid",
      color=color.new(color.yellow, 60), linewidth=1, style=plot.style_circles)
 
-// ── ENTRY LABELS ───────────────────────────────────────────────────────────
+// ── ENTRY LABELS — large "L" / "S" so they're always visible ──────────────
 
-plotshape(longSignal, title="BUY",
+// Long entry: big green label-arrow pointing up, below the bar
+plotshape(longSignal, title="Long Entry (L)",
      style=shape.labelup, location=location.belowbar,
-     color=color.green, size=size.normal,
-     text="BUY", textcolor=color.white)
+     color=color.green, size=size.large,
+     text="L", textcolor=color.white)
 
-plotshape(shortSignal, title="SELL",
+// Short entry: big red label-arrow pointing down, above the bar
+plotshape(shortSignal, title="Short Entry (S)",
      style=shape.labeldown, location=location.abovebar,
-     color=color.red, size=size.normal,
-     text="SELL", textcolor=color.white)
+     color=color.red, size=size.large,
+     text="S", textcolor=color.white)
 
-// BOS events filtered out by trend / candle / session
+// BOS events that didn't qualify as a full signal — small marker only
 plotshape(bullBOS and not longSignal, title="BOS ↑",
      style=shape.triangleup, location=location.belowbar,
-     color=color.new(color.lime, 30), size=size.tiny, text="BOS")
+     color=color.new(color.lime, 40), size=size.tiny, text="bos")
 plotshape(bearBOS and not shortSignal, title="BOS ↓",
      style=shape.triangledown, location=location.abovebar,
-     color=color.new(color.red, 30), size=size.tiny, text="BOS")
+     color=color.new(color.red, 40), size=size.tiny, text="bos")
 
 // ── ACTIVE TRADE LEVELS ────────────────────────────────────────────────────
 
@@ -240,43 +242,40 @@ plot(inLong or inShort ? stopPrice  : na, "SL",
 plot(inLong or inShort ? takePrice  : na, "TP",
      color=color.lime,  linewidth=2, style=plot.style_linebr)
 
-// ── EXIT LABELS (per reason, per direction) ────────────────────────────────
+// ── EXIT LABELS — "E" on every exit, direction determines position ─────────
+// Long exit: orange label above bar pointing down
+// Short exit: orange label below bar pointing up
+// Colour shifts: green = TP, red = SL, orange = SMA20 — so you still know why
 
-// Long TP hit — green label above bar
-plotshape(longTP, title="Long TP",
+plotshape(longTP, title="Long TP (E)",
      style=shape.labeldown, location=location.abovebar,
-     color=color.new(color.lime, 10), size=size.small,
-     text="TP", textcolor=color.white)
+     color=color.new(color.lime, 0), size=size.normal,
+     text="E", textcolor=color.white)
 
-// Long SL hit — red label above bar
-plotshape(longSL, title="Long SL",
+plotshape(longSL, title="Long SL (E)",
      style=shape.labeldown, location=location.abovebar,
-     color=color.new(color.red, 10), size=size.small,
-     text="SL", textcolor=color.white)
+     color=color.new(color.red, 0), size=size.normal,
+     text="E", textcolor=color.white)
 
-// Long SMA20 exit — orange label above bar
-plotshape(longSMA, title="Long Exit (SMA)",
+plotshape(longSMA, title="Long SMA Exit (E)",
      style=shape.labeldown, location=location.abovebar,
-     color=color.new(color.orange, 10), size=size.small,
-     text="Exit", textcolor=color.white)
+     color=color.new(color.orange, 0), size=size.normal,
+     text="E", textcolor=color.white)
 
-// Short TP hit — teal label below bar
-plotshape(shortTP, title="Short TP",
+plotshape(shortTP, title="Short TP (E)",
      style=shape.labelup, location=location.belowbar,
-     color=color.new(color.lime, 10), size=size.small,
-     text="TP", textcolor=color.white)
+     color=color.new(color.lime, 0), size=size.normal,
+     text="E", textcolor=color.white)
 
-// Short SL hit — red label below bar
-plotshape(shortSL, title="Short SL",
+plotshape(shortSL, title="Short SL (E)",
      style=shape.labelup, location=location.belowbar,
-     color=color.new(color.red, 10), size=size.small,
-     text="SL", textcolor=color.white)
+     color=color.new(color.red, 0), size=size.normal,
+     text="E", textcolor=color.white)
 
-// Short SMA20 exit — orange label below bar
-plotshape(shortSMA, title="Short Exit (SMA)",
+plotshape(shortSMA, title="Short SMA Exit (E)",
      style=shape.labelup, location=location.belowbar,
-     color=color.new(color.orange, 10), size=size.small,
-     text="Exit", textcolor=color.white)
+     color=color.new(color.orange, 0), size=size.normal,
+     text="E", textcolor=color.white)
 
 // ── ALERTS ─────────────────────────────────────────────────────────────────
 
