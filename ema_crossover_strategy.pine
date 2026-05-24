@@ -1,6 +1,5 @@
 //@version=5
-strategy(
-    title             = "EMA Crossover Long/Short Strategy",
+strategy(title="EMA Crossover Long/Short Strategy",
     shorttitle        = "EMA X-Over",
     overlay           = true,
     pyramiding        = 0,
@@ -8,8 +7,7 @@ strategy(
     default_qty_value = 100,
     initial_capital   = 10000,
     commission_type   = strategy.commission.percent,
-    commission_value  = 0.05
-)
+    commission_value  = 0.05)
 
 // ── Inputs ────────────────────────────────────────────────────────────────────
 fastLen = input.int(9,     "Fast EMA Length", minval=2,   group="EMA Settings")
