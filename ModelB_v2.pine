@@ -171,13 +171,22 @@ if shortSignal and not inShort and not inLong
     stopPrice  := (not na(lastPH) and (lastPH - close) < atr * 3.0) ? slSwing : slATR
     takePrice  := entryPrice - (stopPrice - entryPrice) * rr
 
-// ── EXITS ──────────────────────────────────────────────────────────────────
+// ── EXITS — split by reason so each gets its own label ────────────────────
 
 sma20ExitLong  = useSMA20Exit and ta.crossunder(close, sma20)
 sma20ExitShort = useSMA20Exit and ta.crossover(close,  sma20)
 
-longExit  = inLong  and (low  <= stopPrice or high >= takePrice or sma20ExitLong)
-shortExit = inShort and (high >= stopPrice or low  <= takePrice or sma20ExitShort)
+// Detect each exit reason independently (before state is cleared)
+longTP   = inLong  and high >= takePrice
+longSL   = inLong  and low  <= stopPrice
+longSMA  = inLong  and sma20ExitLong and not longTP and not longSL
+
+shortTP  = inShort and low  <= takePrice
+shortSL  = inShort and high >= stopPrice
+shortSMA = inShort and sma20ExitShort and not shortTP and not shortSL
+
+longExit  = longTP  or longSL  or longSMA
+shortExit = shortTP or shortSL or shortSMA
 
 if longExit
     inLong  := false
@@ -194,7 +203,7 @@ bgcolor(inShort ? color.new(color.red,   97) : na, title="Short Trade BG")
 plot(sma200, "SMA 200", color=color.white, linewidth=2)
 plot(sma20,  "SMA 20",  color=color.blue,  linewidth=2)
 
-// Live structure levels (step-line — updates on each new confirmed pivot)
+// Live structure levels
 plot(lastPH, "Swing High", color=color.new(color.red,  50), linewidth=1)
 plot(lastPL, "Swing Low",  color=color.new(color.lime, 50), linewidth=1)
 
@@ -202,15 +211,19 @@ plot(lastPL, "Swing Low",  color=color.new(color.lime, 50), linewidth=1)
 plot(useDisc and pivotsDefined ? midPoint : na, "Range Mid",
      color=color.new(color.yellow, 60), linewidth=1, style=plot.style_circles)
 
-// Entry signals
-plotshape(longSignal,  title="BUY",  style=shape.labelup,
-     location=location.belowbar, color=color.green, size=size.small,
+// ── ENTRY LABELS ───────────────────────────────────────────────────────────
+
+plotshape(longSignal, title="BUY",
+     style=shape.labelup, location=location.belowbar,
+     color=color.green, size=size.normal,
      text="BUY", textcolor=color.white)
-plotshape(shortSignal, title="SELL", style=shape.labeldown,
-     location=location.abovebar, color=color.red, size=size.small,
+
+plotshape(shortSignal, title="SELL",
+     style=shape.labeldown, location=location.abovebar,
+     color=color.red, size=size.normal,
      text="SELL", textcolor=color.white)
 
-// BOS events that didn't trigger an entry (filtered out by trend/candle/session)
+// BOS events filtered out by trend / candle / session
 plotshape(bullBOS and not longSignal, title="BOS ↑",
      style=shape.triangleup, location=location.belowbar,
      color=color.new(color.lime, 30), size=size.tiny, text="BOS")
@@ -218,23 +231,60 @@ plotshape(bearBOS and not shortSignal, title="BOS ↓",
      style=shape.triangledown, location=location.abovebar,
      color=color.new(color.red, 30), size=size.tiny, text="BOS")
 
-// Active trade levels (break when no position)
+// ── ACTIVE TRADE LEVELS ────────────────────────────────────────────────────
+
 plot(inLong or inShort ? entryPrice : na, "Entry",
      color=color.gray,  linewidth=1, style=plot.style_linebr)
 plot(inLong or inShort ? stopPrice  : na, "SL",
      color=color.red,   linewidth=2, style=plot.style_linebr)
 plot(inLong or inShort ? takePrice  : na, "TP",
-     color=color.green, linewidth=2, style=plot.style_linebr)
+     color=color.lime,  linewidth=2, style=plot.style_linebr)
 
-// Exit markers
-plotshape(longExit,  title="Long Exit",  style=shape.xcross,
-     location=location.abovebar, color=color.orange, size=size.small, text="EXIT")
-plotshape(shortExit, title="Short Exit", style=shape.xcross,
-     location=location.belowbar, color=color.orange, size=size.small, text="EXIT")
+// ── EXIT LABELS (per reason, per direction) ────────────────────────────────
+
+// Long TP hit — green label above bar
+plotshape(longTP, title="Long TP",
+     style=shape.labeldown, location=location.abovebar,
+     color=color.new(color.lime, 10), size=size.small,
+     text="TP", textcolor=color.white)
+
+// Long SL hit — red label above bar
+plotshape(longSL, title="Long SL",
+     style=shape.labeldown, location=location.abovebar,
+     color=color.new(color.red, 10), size=size.small,
+     text="SL", textcolor=color.white)
+
+// Long SMA20 exit — orange label above bar
+plotshape(longSMA, title="Long Exit (SMA)",
+     style=shape.labeldown, location=location.abovebar,
+     color=color.new(color.orange, 10), size=size.small,
+     text="Exit", textcolor=color.white)
+
+// Short TP hit — teal label below bar
+plotshape(shortTP, title="Short TP",
+     style=shape.labelup, location=location.belowbar,
+     color=color.new(color.lime, 10), size=size.small,
+     text="TP", textcolor=color.white)
+
+// Short SL hit — red label below bar
+plotshape(shortSL, title="Short SL",
+     style=shape.labelup, location=location.belowbar,
+     color=color.new(color.red, 10), size=size.small,
+     text="SL", textcolor=color.white)
+
+// Short SMA20 exit — orange label below bar
+plotshape(shortSMA, title="Short Exit (SMA)",
+     style=shape.labelup, location=location.belowbar,
+     color=color.new(color.orange, 10), size=size.small,
+     text="Exit", textcolor=color.white)
 
 // ── ALERTS ─────────────────────────────────────────────────────────────────
 
-alertcondition(longSignal,  "BUY Signal",  "BUY — Bullish BOS confirmed")
-alertcondition(shortSignal, "SELL Signal", "SELL — Bearish BOS confirmed")
-alertcondition(longExit,    "Long Exit",   "Long position exit triggered")
-alertcondition(shortExit,   "Short Exit",  "Short position exit triggered")
+alertcondition(longSignal,  "BUY Signal",     "BUY — Bullish BOS confirmed")
+alertcondition(shortSignal, "SELL Signal",    "SELL — Bearish BOS confirmed")
+alertcondition(longTP,      "Long TP Hit",    "Long trade reached Take Profit")
+alertcondition(longSL,      "Long SL Hit",    "Long trade hit Stop Loss")
+alertcondition(longSMA,     "Long SMA Exit",  "Long trade exited on SMA20 cross")
+alertcondition(shortTP,     "Short TP Hit",   "Short trade reached Take Profit")
+alertcondition(shortSL,     "Short SL Hit",   "Short trade hit Stop Loss")
+alertcondition(shortSMA,    "Short SMA Exit", "Short trade exited on SMA20 cross")
