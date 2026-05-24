@@ -1,0 +1,261 @@
+//@version=6
+// Model B v2.0 – SMC Intraday (improved)
+//
+// Key changes from v1.0:
+//  - Pivot-based BOS replaces rolling-max breakout (no repeat signals per level)
+//  - Order block boxes drawn at BOS confirmation
+//  - Fair Value Gap detection + visualization
+//  - Stop anchored to last swing low/high (SMC), ATR as fallback
+//  - SMA20 exit uses crossunder/crossover instead of continuous check
+//  - Exit alert conditions added
+//  - Optional Discount/Premium zone filter
+//  - BOS labels on chart (separate from entry signals)
+
+indicator("Model B v2.0 – SMC Intraday", overlay=true, max_boxes_count=200)
+
+//====================================================
+// INPUTS
+//====================================================
+
+sma200Len  = input.int(200,  "200 SMA")
+sma20Len   = input.int(20,   "20 SMA")
+atrLen     = input.int(14,   "ATR Length")
+atrMult    = input.float(1.5,"ATR Multiplier", step=0.1)
+rr         = input.float(2.0,"Risk:Reward")
+swingLen   = input.int(5,    "Swing Length", minval=3, maxval=20,
+             tooltip="Pivot lookback on each side. Higher = fewer but more significant swings.")
+showOB     = input.bool(true, "Show Order Blocks")
+showFVG    = input.bool(true, "Show FVGs")
+useDisc    = input.bool(false,"Discount/Premium Filter",
+             tooltip="Longs only below 50% of last swing range; shorts only above.")
+useSession = input.bool(true, "NY Session Filter")
+session    = input.session("0930-1600", "Session")
+
+//====================================================
+// CORE
+//====================================================
+
+sma200 = ta.sma(close, sma200Len)
+sma20  = ta.sma(close, sma20Len)
+atr    = ta.atr(atrLen)
+
+sessionOK = not useSession or not na(time(timeframe.period, session))
+
+//====================================================
+// PIVOT-BASED SWING HIGH / LOW
+// ta.pivothigh/low confirm swingLen bars AFTER the pivot bar — no repainting
+//====================================================
+
+ph = ta.pivothigh(high, swingLen, swingLen)
+pl = ta.pivotlow(low,  swingLen, swingLen)
+
+var float lastPH = na
+var float lastPL = na
+
+if not na(ph)
+    lastPH := ph
+if not na(pl)
+    lastPL := pl
+
+//====================================================
+// BREAK OF STRUCTURE — fires exactly once per swing level
+//====================================================
+
+var float bosHighUsed = na
+var float bosLowUsed  = na
+
+// Fire only on the first bar that closes beyond the level
+bullBOS = not na(lastPH) and close > lastPH and lastPH != bosHighUsed and barstate.isconfirmed
+bearBOS = not na(lastPL) and close < lastPL and lastPL != bosLowUsed  and barstate.isconfirmed
+
+if bullBOS
+    bosHighUsed := lastPH
+if bearBOS
+    bosLowUsed  := lastPL
+
+//====================================================
+// ORDER BLOCKS
+// Bullish OB: last bearish candle immediately before a bullish BOS
+// Bearish OB: last bullish candle immediately before a bearish BOS
+//====================================================
+
+var box bullOBBox = na
+var box bearOBBox = na
+
+if bullBOS and showOB and close[1] < open[1]
+    box.delete(bullOBBox)
+    bullOBBox := box.new(bar_index - 1, high[1], bar_index + 30,
+         low[1], bgcolor=color.new(color.green, 88),
+         border_color=color.green, border_width=1)
+
+if bearBOS and showOB and close[1] > open[1]
+    box.delete(bearOBBox)
+    bearOBBox := box.new(bar_index - 1, high[1], bar_index + 30,
+         low[1], bgcolor=color.new(color.red, 88),
+         border_color=color.red, border_width=1)
+
+//====================================================
+// FAIR VALUE GAPS (3-candle imbalance)
+// Bullish FVG: high[2] < low  → gap up between bar[2] and current bar
+// Bearish FVG: low[2]  > high → gap down between bar[2] and current bar
+//====================================================
+
+bullFVG = high[2] < low
+bearFVG = low[2]  > high
+
+var box lastBullFVG = na
+var box lastBearFVG = na
+
+if bullFVG and showFVG
+    box.delete(lastBullFVG)
+    lastBullFVG := box.new(bar_index - 1, low, bar_index + 20,
+         high[2], bgcolor=color.new(color.teal, 90),
+         border_color=color.new(color.teal, 50), border_width=1)
+
+if bearFVG and showFVG
+    box.delete(lastBearFVG)
+    lastBearFVG := box.new(bar_index - 1, low[2], bar_index + 20,
+         high, bgcolor=color.new(color.orange, 90),
+         border_color=color.new(color.orange, 50), border_width=1)
+
+//====================================================
+// DISCOUNT / PREMIUM ZONE FILTER (optional)
+// Discount = below midpoint of last swing range (preferred for longs)
+// Premium  = above midpoint of last swing range (preferred for shorts)
+//====================================================
+
+midPoint   = (nz(lastPH, high) + nz(lastPL, low)) / 2
+inDiscount = close < midPoint
+inPremium  = close > midPoint
+
+discOK = not useDisc or inDiscount
+premOK = not useDisc or inPremium
+
+//====================================================
+// CANDLE QUALITY FILTER
+//====================================================
+
+body   = math.abs(close - open)
+cRange = high - low
+validBull = close > open and body > cRange * 0.4
+validBear = close < open and body > cRange * 0.4
+
+//====================================================
+// TREND FILTER
+//====================================================
+
+bullTrend = close > sma200
+bearTrend = close < sma200
+
+//====================================================
+// FINAL SIGNALS
+//====================================================
+
+longSignal =
+     bullBOS   and
+     validBull and
+     bullTrend and
+     discOK    and
+     sessionOK
+
+shortSignal =
+     bearBOS   and
+     validBear and
+     bearTrend and
+     premOK    and
+     sessionOK
+
+//====================================================
+// STATE MACHINE
+//====================================================
+
+var bool  inLong     = false
+var bool  inShort    = false
+var float entryPrice = na
+var float stopPrice  = na
+var float takePrice  = na
+
+//====================================================
+// LONG ENTRY — stop anchored to last swing low
+//====================================================
+
+if longSignal and not inLong and not inShort
+    inLong     := true
+    entryPrice := close
+    slATR      = close - atr * atrMult
+    // Prefer a stop just below the last swing low; fall back to ATR if swing is too far away
+    slSwing    = not na(lastPL) ? lastPL - atr * 0.2 : slATR
+    stopPrice  := (not na(lastPL) and (close - lastPL) < atr * 3.0) ? slSwing : slATR
+    takePrice  := entryPrice + (entryPrice - stopPrice) * rr
+
+//====================================================
+// SHORT ENTRY — stop anchored to last swing high
+//====================================================
+
+if shortSignal and not inShort and not inLong
+    inShort    := true
+    entryPrice := close
+    slATR      = close + atr * atrMult
+    slSwing    = not na(lastPH) ? lastPH + atr * 0.2 : slATR
+    stopPrice  := (not na(lastPH) and (lastPH - close) < atr * 3.0) ? slSwing : slATR
+    takePrice  := entryPrice - (stopPrice - entryPrice) * rr
+
+//====================================================
+// EXIT LOGIC
+// SMA20 uses crossunder/crossover — avoids exiting on every bar below it
+//====================================================
+
+longExit  = inLong  and (low  <= stopPrice or high >= takePrice or ta.crossunder(close, sma20))
+shortExit = inShort and (high >= stopPrice or low  <= takePrice or ta.crossover(close,  sma20))
+
+if longExit
+    inLong := false
+if shortExit
+    inShort := false
+
+//====================================================
+// VISUALS
+//====================================================
+
+plot(sma200, "SMA 200", color=color.white, linewidth=2)
+plot(sma20,  "SMA 20",  color=color.blue,  linewidth=2)
+
+// Live structure levels (step-function, updates when new pivot confirmed)
+plot(lastPH, "Swing High", color=color.new(color.red,  50), linewidth=1)
+plot(lastPL, "Swing Low",  color=color.new(color.lime, 50), linewidth=1)
+
+// Entry signals
+plotshape(longSignal,  title="BUY",  style=shape.labelup,
+     location=location.belowbar, color=color.green,
+     text="BUY", textcolor=color.white)
+plotshape(shortSignal, title="SELL", style=shape.labeldown,
+     location=location.abovebar, color=color.red,
+     text="SELL", textcolor=color.white)
+
+// BOS markers (shown separately from entry signals so all BOS events are visible)
+plotshape(bullBOS and not longSignal, title="BOS↑",
+     style=shape.triangleup,   location=location.belowbar,
+     color=color.new(color.lime, 30), size=size.tiny, text="BOS")
+plotshape(bearBOS and not shortSignal, title="BOS↓",
+     style=shape.triangledown, location=location.abovebar,
+     color=color.new(color.red,  30), size=size.tiny, text="BOS")
+
+// Active trade levels
+plot(inLong or inShort ? entryPrice : na, "Entry", color=color.gray,  linewidth=1)
+plot(inLong or inShort ? stopPrice  : na, "SL",    color=color.red,   linewidth=2, style=plot.style_linebr)
+plot(inLong or inShort ? takePrice  : na, "TP",    color=color.green, linewidth=2, style=plot.style_linebr)
+
+// Exit markers
+plotshape(longExit,  title="Long Exit",  style=shape.xcross,
+     location=location.abovebar, color=color.orange, size=size.small, text="EXIT")
+plotshape(shortExit, title="Short Exit", style=shape.xcross,
+     location=location.belowbar, color=color.orange, size=size.small, text="EXIT")
+
+//====================================================
+// ALERTS
+//====================================================
+
+alertcondition(longSignal,  "BUY Signal",   "BUY — Bullish BOS confirmed")
+alertcondition(shortSignal, "SELL Signal",  "SELL — Bearish BOS confirmed")
+alertcondition(longExit,    "Long Exit",    "Long position exit triggered")
+alertcondition(shortExit,   "Short Exit",   "Short position exit triggered")
