@@ -8,8 +8,8 @@ from plotly.subplots import make_subplots
 import yfinance as yf
 
 _TICKER_MAP = {"MCL": "CL=F", "MES": "ES=F"}
-_INTERVAL_OPTIONS = ["5m", "15m", "1h", "1d"]
-_PERIOD_MAP = {"5m": "5d", "15m": "5d", "1h": "1mo", "1d": "6mo"}
+_INTERVAL_OPTIONS = ["5m", "15m", "30m", "1h", "1d"]
+_PERIOD_MAP = {"5m": "5d", "15m": "5d", "30m": "1mo", "1h": "1mo", "1d": "6mo"}
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -86,7 +86,7 @@ def render_chart_panel(symbol: str, height: int = 560):
                 st.rerun()
 
     interval = st.session_state[iv_key]
-    intraday = interval in ("5m", "15m", "1h")
+    intraday = interval in ("5m", "15m", "30m", "1h")
 
     with st.spinner(f"Loading {symbol}…"):
         df = _download(ticker, _PERIOD_MAP[interval], interval)
@@ -103,84 +103,99 @@ def render_chart_panel(symbol: str, height: int = 560):
         row_heights=[0.78, 0.22],
     )
 
+    # Chart colors — matches the screenshots
+    BG      = "#2b2b43"   # dark gray-blue background
+    GRID    = "#3d3d5c"   # subtle grid lines
+    TEXT_C  = "#d1d4dc"   # axis tick labels
+
     # ── Price pane ────────────────────────────────────────────────────────
     fig.add_trace(go.Candlestick(
         x=df.index, open=df["Open"], high=df["High"],
         low=df["Low"], close=df["Close"], name=symbol,
-        increasing_line_color="#26a69a", decreasing_line_color="#ef5350",
-        increasing_fillcolor="#26a69a",  decreasing_fillcolor="#ef5350",
+        increasing_line_color="#d1d4dc", decreasing_line_color="#d1d4dc",
+        increasing_fillcolor="#d1d4dc",  decreasing_fillcolor="#1a1a2e",
     ), row=1, col=1)
 
+    # SMA 200 — white, matches screenshot
+    sma200 = df["Close"].rolling(200, min_periods=50).mean()
+    fig.add_trace(go.Scatter(
+        x=df.index, y=sma200, mode="lines", name="SMA 200",
+        line=dict(color="#ffffff", width=2),
+    ), row=1, col=1)
+
+    # SMA 20 — blue, matches screenshot
     ema20 = df["Close"].ewm(span=20, adjust=False).mean()
     fig.add_trace(go.Scatter(
-        x=df.index, y=ema20, mode="lines", name="EMA 20",
-        line=dict(color="#2196f3", width=1.3),
+        x=df.index, y=ema20, mode="lines", name="SMA 20",
+        line=dict(color="#2962ff", width=2),
     ), row=1, col=1)
 
     if intraday:
         vwap = _vwap_daily(df)
         fig.add_trace(go.Scatter(
             x=df.index, y=vwap, mode="lines", name="VWAP",
-            line=dict(color="#ff9800", width=1.4, dash="dot"),
+            line=dict(color="#ff9800", width=1.2, dash="dot"),
         ), row=1, col=1)
 
         bt, bp, st2, sp = _signals(df, vwap)
         if len(bt):
             fig.add_trace(go.Scatter(
-                x=bt, y=bp, mode="markers", name="Buy",
-                marker=dict(symbol="triangle-up", size=13, color="#26a69a",
-                            line=dict(color="#1a7a72", width=1)),
-                hovertemplate="Buy %{y:.2f}<extra></extra>",
+                x=bt, y=bp, mode="markers+text",
+                name="BUY",
+                text=["BUY"] * len(bt),
+                textposition="bottom center",
+                textfont=dict(color="#ffffff", size=9, family="Arial Black"),
+                marker=dict(symbol="triangle-up", size=16, color="#00c853",
+                            line=dict(color="#00c853", width=0)),
+                hovertemplate="BUY %{y:.2f}<extra></extra>",
             ), row=1, col=1)
         if len(st2):
             fig.add_trace(go.Scatter(
-                x=st2, y=sp, mode="markers", name="Sell",
-                marker=dict(symbol="triangle-down", size=13, color="#ef5350",
-                            line=dict(color="#b71c1c", width=1)),
-                hovertemplate="Sell %{y:.2f}<extra></extra>",
+                x=st2, y=sp, mode="markers+text",
+                name="SELL",
+                text=["SELL"] * len(st2),
+                textposition="top center",
+                textfont=dict(color="#ffffff", size=9, family="Arial Black"),
+                marker=dict(symbol="triangle-down", size=16, color="#ff1744",
+                            line=dict(color="#ff1744", width=0)),
+                hovertemplate="SELL %{y:.2f}<extra></extra>",
             ), row=1, col=1)
 
     # ── Volume pane ───────────────────────────────────────────────────────
     vol_colors = [
-        "#26a69a" if c >= o else "#ef5350"
+        "#00c853" if c >= o else "#ff1744"
         for c, o in zip(df["Close"], df["Open"])
     ]
     fig.add_trace(go.Bar(
         x=df.index, y=df["Volume"],
-        name="Volume",
-        marker_color=vol_colors,
-        marker_line_width=0,
-        showlegend=False,
+        name="Volume", marker_color=vol_colors,
+        marker_line_width=0, showlegend=False,
         hovertemplate="Vol %{y:,.0f}<extra></extra>",
     ), row=2, col=1)
 
-    # ── Shared layout ─────────────────────────────────────────────────────
-    grid   = "#2a2e39"
-    bg     = "#131722"   # TradingView dark chart background
-    text_c = "#d1d4dc"
-
+    # ── Layout ────────────────────────────────────────────────────────────
     fig.update_layout(
         height=height,
         margin=dict(l=0, r=0, t=10, b=0),
-        paper_bgcolor="#f5f8ff",   # outer page stays light
-        plot_bgcolor=bg,
-        font=dict(color=text_c, size=11),
+        paper_bgcolor="#f5f8ff",
+        plot_bgcolor=BG,
+        font=dict(color=TEXT_C, size=11),
         legend=dict(
             orientation="h", yanchor="bottom", y=1.01,
             xanchor="left", x=0, font=dict(size=10, color="#0a1428"),
             bgcolor="rgba(0,0,0,0)",
         ),
         hovermode="x unified",
-        hoverlabel=dict(bgcolor="#1e2330", font_color="#d1d4dc"),
-        xaxis=dict(showgrid=True, gridcolor=grid, zeroline=False,
+        hoverlabel=dict(bgcolor="#1e1e2e", font_color=TEXT_C),
+        xaxis=dict(showgrid=True, gridcolor=GRID, zeroline=False,
                    rangeslider=dict(visible=False), type="date",
                    showticklabels=False),
-        xaxis2=dict(showgrid=True, gridcolor=grid, zeroline=False,
-                    type="date", tickfont=dict(color=text_c, size=9)),
-        yaxis=dict(showgrid=True, gridcolor=grid, zeroline=False,
-                   side="right", tickfont=dict(color=text_c)),
+        xaxis2=dict(showgrid=True, gridcolor=GRID, zeroline=False,
+                    type="date", tickfont=dict(color=TEXT_C, size=9)),
+        yaxis=dict(showgrid=True, gridcolor=GRID, zeroline=False,
+                   side="right", tickfont=dict(color=TEXT_C)),
         yaxis2=dict(showgrid=False, zeroline=False,
-                    side="right", tickfont=dict(color=text_c, size=9)),
+                    side="right", tickfont=dict(color=TEXT_C, size=9)),
     )
 
     st.plotly_chart(fig, use_container_width=True, config={
