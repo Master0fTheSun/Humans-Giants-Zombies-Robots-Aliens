@@ -20,7 +20,7 @@ _BASE = "https://api.stlouisfed.org/fred/series/observations"
 def get_fred_series(series_id: str, api_key: str = "") -> tuple:
     """
     Return (current_value, day_change) for a FRED series.
-    Returns (0.0, 0.0) on any error so callers can safely check for zeros.
+    Returns (None, None) on any error so callers can distinguish failure from a real zero.
     """
     params = {
         "series_id":  series_id,
@@ -38,23 +38,23 @@ def get_fred_series(series_id: str, api_key: str = "") -> tuple:
             data = json.loads(r.read())
 
         obs = [o for o in data.get("observations", [])
-               if o.get("value", ".") not in (".", "")]
+               if o.get("value") not in (None, ".", "")]
         if not obs:
-            return 0.0, 0.0
+            return None, None
 
         current = round(float(obs[0]["value"]), 2)
         prior   = round(float(obs[1]["value"]), 2) if len(obs) > 1 else current
         return current, round(current - prior, 2)
 
     except Exception:
-        return 0.0, 0.0
+        return None, None
 
 
 def get_fred_macro(api_key: str = "") -> dict:
     """
     Fetch VIX, 10Y yield, and dollar index from FRED.
     Returns a partial macro dict — caller merges with yfinance fallback.
-    Zero values mean the fetch failed for that series.
+    None values mean the fetch failed for that series; caller should skip them.
     """
     vix,    vix_ch    = get_fred_series("VIXCLS",   api_key)
     yield_, yield_ch  = get_fred_series("DGS10",    api_key)

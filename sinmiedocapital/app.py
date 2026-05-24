@@ -200,12 +200,13 @@ mes = data["contracts"]["MES"]
 # Tabs
 # ---------------------------------------------------------------------------
 
-tab_overview, tab_charts, tab_thesis, tab_risk, tab_news = st.tabs([
+tab_overview, tab_charts, tab_thesis, tab_risk, tab_news, tab_tutorial = st.tabs([
     "📊 Overview",
     "📈 Charts",
     "📋 Thesis & Plan",
     "🧮 Risk Tools",
     "📰 News & Macro",
+    "📚 Tutorial",
 ])
 
 # ── Tab 1: Overview ─────────────────────────────────────────────────────────
@@ -286,6 +287,11 @@ with tab_news:
         render_macro_panel(data["macro"])
     with news_col:
         render_news_feed(data["news"])
+
+# ── Tab 6: Tutorial ───────────────────────────────────────────────────────────
+with tab_tutorial:
+    from components.tutorial import render_tutorial
+    render_tutorial()
 
 # ---------------------------------------------------------------------------
 # Footer

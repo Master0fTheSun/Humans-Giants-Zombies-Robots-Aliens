@@ -250,8 +250,8 @@ def _today_bars(intraday: pd.DataFrame) -> pd.DataFrame:
 
 
 def _build_key_levels(price, prior_high, prior_low, sess_high, sess_low, is_crude):
-    gap = 0.20 if is_crude else 5
-    step = 1 if is_crude else 25
+    gap  = 0.20 if is_crude else 25   # min distance to avoid duplicate levels (MCL: 20c; MES: 25pts)
+    step = 1    if is_crude else 25
     base = round(price) if is_crude else round(price / step) * step
 
     resistance, support = [], []
@@ -378,13 +378,13 @@ def _fetch_contract(yf_symbol: str, display_symbol: str, display_name: str) -> d
         sess_low  = prior_day_low
         volume    = int(prior_rows["Volume"].iloc[-1])
 
-    vwap   = _calc_vwap(intraday)
-    atr    = _calc_atr(prior_rows)
-    change = round(current_price - prev_close, decimals)
-    chg_pct = round(change / prev_close * 100, 2) if prev_close else 0
-    gap    = "Gap Up" if change > 0.05 else "Gap Down" if change < -0.05 else "Flat"
-
+    vwap     = _calc_vwap(intraday)
+    atr      = _calc_atr(prior_rows) or 1.0   # guard: avoids div-by-zero in thesis/risk calcs
+    change   = round(current_price - prev_close, decimals)
+    chg_pct  = round(change / prev_close * 100, 2) if prev_close else 0
     is_crude = display_symbol == "MCL"
+    gap_thr  = 0.10 if is_crude else 5.0       # MCL: 10 cents; MES: 5 index points
+    gap      = "Gap Up" if change > gap_thr else "Gap Down" if change < -gap_thr else "Flat"
     resistance, support = _build_key_levels(
         current_price, prior_day_high, prior_day_low,
         sess_high, sess_low, is_crude
@@ -456,7 +456,7 @@ def _fetch_macro() -> dict:
     try:
         from data.fred_adapter import get_fred_macro
         fred = get_fred_macro(fred_key)
-        macro.update({k: v for k, v in fred.items() if v != 0.0})
+        macro.update({k: v for k, v in fred.items() if v is not None})
     except Exception:
         pass
 
