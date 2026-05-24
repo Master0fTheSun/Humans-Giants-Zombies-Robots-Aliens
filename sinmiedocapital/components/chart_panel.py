@@ -356,14 +356,14 @@ def render_chart_panel(symbol: str, height: int = 520):
         # Click-to-place mode
         if active_tool == "fib":
             if click_step == 0:
-                st.info("📐 **Fibonacci** — click the **swing HIGH** on the chart")
+                st.info("📐 **Fibonacci** — click the **highest recent peak** (swing HIGH) on the chart")
             else:
                 p1_y = click_p1["y"] if click_p1 else _chart_high
-                st.info(f"📐 **Fibonacci** — High locked at **{p1_y:.2f}** — now click the **swing LOW**")
+                st.info(f"📐 **Fibonacci** — High locked at **{p1_y:.2f}** — now click the **lowest recent trough** (swing LOW) · levels will draw automatically")
 
         elif active_tool == "pos":
             if click_step == 0:
-                st.info("📊 **Position** — click your **entry price** on the chart")
+                st.info("📊 **Position** — click your **planned entry price** on the chart")
             else:
                 # Entry captured — show compact stop/target form
                 entry_price = click_p1["y"] if click_p1 else _last_price
@@ -421,10 +421,10 @@ def render_chart_panel(symbol: str, height: int = 520):
 
         elif active_tool == "tl":
             if click_step == 0:
-                st.info("📏 **Trend Line** — click the **first point** on the chart")
+                st.info("📏 **Trend Line** — click the **first price point** on the chart (e.g. a high, low, or level you want to mark)")
             else:
                 p1_y = click_p1["y"] if click_p1 else "?"
-                st.info(f"📏 **Trend Line** — First point at **{p1_y:.2f}** — click the **second point**")
+                st.info(f"📏 **Trend Line** — Point 1 at **{p1_y:.2f}** — click the **second point** to complete the line")
 
     else:
         # Form fallback when streamlit-plotly-events is not installed

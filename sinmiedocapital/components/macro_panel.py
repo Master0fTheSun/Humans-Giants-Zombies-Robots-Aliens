@@ -47,13 +47,30 @@ def render_macro_panel(macro: dict):
     with m4:
         st.markdown("**Fed Stance**")
         fed_color = "#e74c3c" if macro["fed_stance"] == "Hawkish" else "#2ecc71" if macro["fed_stance"] == "Dovish" else "#f39c12"
+        fed_hint  = {"Hawkish": "rates ↑ — pressure on stocks",
+                     "Dovish":  "rates ↓ — supportive for stocks"}.get(macro["fed_stance"], "")
         st.markdown(
             f'<span style="font-size:1.1em;font-weight:700;color:{fed_color};">{macro["fed_stance"]}</span>',
             unsafe_allow_html=True,
         )
+        if fed_hint:
+            st.markdown(
+                f'<div style="color:#95a5a6;font-size:0.75em;margin-top:2px;">{fed_hint}</div>',
+                unsafe_allow_html=True,
+            )
     with m5:
         st.markdown("**Headline Risk**")
         st.markdown(risk_badge(macro["headline_risk"]), unsafe_allow_html=True)
+        vix_level = macro.get("vix", 0)
+        vix_context = ("VIX > 25" if vix_level > 25
+                       else "VIX 18–25" if vix_level > 18
+                       else "VIX < 18" if vix_level > 0
+                       else "")
+        if vix_context:
+            st.markdown(
+                f'<div style="color:#95a5a6;font-size:0.75em;margin-top:2px;">{vix_context}</div>',
+                unsafe_allow_html=True,
+            )
 
     st.markdown("---")
 

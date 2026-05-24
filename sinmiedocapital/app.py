@@ -183,6 +183,7 @@ st.markdown(
     f'<span style="color:{mode_color};">● {mode_label}</span>'
     f'{"  &nbsp;|&nbsp;  <span style=color:" + mkt_color + ";> ● " + mkt_label + "</span>" if mkt_label else ""}'
     f'{"  <span style=color:#636e72;font-size:0.9em;> — " + mkt_note + "</span>" if mkt_note else ""}'
+    f'  &nbsp;<span style="color:#95a5a6;">· ⏱ ~15 min delayed</span>'
     f'</div>',
     unsafe_allow_html=True,
 )
@@ -230,8 +231,9 @@ with tab_overview:
 with tab_charts:
     st.markdown(
         '<div style="color:#5577aa;font-size:0.8em;margin-bottom:8px;">'
-        'Live TradingView charts — 5-min bars with VWAP & RSI. '
-        'Use the toolbar to change timeframe, draw levels, or switch symbols.'
+        'Interactive charts — default 5-min bars with EMA 20 &amp; VWAP (intraday only). '
+        'Change timeframe with the buttons above each chart. '
+        'Tap a drawing tool to annotate directly on the chart.'
         '</div>',
         unsafe_allow_html=True,
     )

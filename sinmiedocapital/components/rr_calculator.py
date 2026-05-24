@@ -12,6 +12,14 @@ _SPECS = {
 
 def render_rr_calculator():
     st.markdown("## Risk:Reward Calculator")
+    st.markdown(
+        '<div style="color:#5577aa;font-size:0.82em;margin:-6px 0 10px 0;">'
+        'Enter your planned entry, stop loss, and target. '
+        'Aim for <strong>1 : 2.0 or better</strong> — risk $1 to make $2. '
+        'Below 1 : 1.5 is generally not worth taking.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
     col_sel, col_cts, _ = st.columns([1, 1, 2])
     with col_sel:

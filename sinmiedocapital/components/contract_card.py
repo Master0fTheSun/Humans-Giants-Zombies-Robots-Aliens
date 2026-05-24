@@ -37,14 +37,18 @@ def render_contract_card(contract: dict):
     # --- Bias / Trend / Setup strip ---
     b1, b2, b3, b4 = st.columns(4)
     with b1:
-        st.markdown("**Bias**")
+        st.markdown("**Bias** — our read")
         bias_color = TREND_COLORS.get(
             "Bullish" if "Long" in contract["bias"] else
             "Bearish" if "Short" in contract["bias"] else "Neutral",
             "#95a5a6"
         )
+        bias_hint = ("expects higher prices" if "Long" in contract["bias"]
+                     else "expects lower prices" if "Short" in contract["bias"]
+                     else "wait for direction")
         st.markdown(
-            f'<span style="color:{bias_color};font-weight:700;">{contract["bias"]}</span>',
+            f'<span style="color:{bias_color};font-weight:700;">{contract["bias"]}</span>'
+            f'<br><span style="color:#95a5a6;font-size:0.75em;">{bias_hint}</span>',
             unsafe_allow_html=True,
         )
     with b2:
@@ -83,8 +87,7 @@ def render_contract_card(contract: dict):
     # VWAP row
     if config.SHOW_VWAP and contract.get("vwap"):
         vwap_vs = "Above" if price > contract["vwap"] else "Below"
-        vwap_color = "#2ecc71" if vwap_vs == "Above" else "#e74c3c"
-        vwap_label = f'VWAP ({vwap_vs})'
+        vwap_label = f'VWAP — {"bullish" if vwap_vs == "Above" else "bearish"} ({vwap_vs.lower()})'
         ranges_data[""].append(vwap_label)
         ranges_data["Level"].append(fmt_price(contract["vwap"], decimals))
         df_ranges = pd.DataFrame(ranges_data)
@@ -103,7 +106,9 @@ def render_contract_card(contract: dict):
 
     if config.SHOW_ATR and contract.get("atr_14"):
         st.markdown(
-            f'<div style="color:#1e40af;font-size:0.82em;">ATR(14): {fmt_price(contract["atr_14"], decimals)}</div>',
+            f'<div style="color:#1e40af;font-size:0.82em;">'
+            f'ATR(14): {fmt_price(contract["atr_14"], decimals)}'
+            f' <span style="color:#95a5a6;">— avg daily range</span></div>',
             unsafe_allow_html=True,
         )
 
