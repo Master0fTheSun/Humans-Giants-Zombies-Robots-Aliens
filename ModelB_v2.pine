@@ -84,27 +84,24 @@ plot(inLong or inShort ? entry : na, "Entry", color=color.gray,  linewidth=1, st
 plot(inLong or inShort ? sl    : na, "SL",    color=color.red,   linewidth=2, style=plot.style_linebr)
 plot(inLong or inShort ? tp    : na, "TP",    color=color.lime,  linewidth=2, style=plot.style_linebr)
 
-// BUY label — huge green arrow below bar
 plotshape(buySignal, title="BUY",
      style=shape.labelup, location=location.belowbar,
-     color=color.green, size=size.huge,
+     color=color.green, size=size.normal,
      text="BUY", textcolor=color.white)
 
-// SELL label — huge red arrow above bar
 plotshape(sellSignal, title="SELL",
      style=shape.labeldown, location=location.abovebar,
-     color=color.red, size=size.huge,
+     color=color.red, size=size.normal,
      text="SELL", textcolor=color.white)
 
-// EXIT label — orange, long exits above bar / short exits below bar
 plotshape(longExit, title="EXIT Long",
      style=shape.labeldown, location=location.abovebar,
-     color=color.orange, size=size.large,
+     color=color.orange, size=size.small,
      text="EXIT", textcolor=color.white)
 
 plotshape(shortExit, title="EXIT Short",
      style=shape.labelup, location=location.belowbar,
-     color=color.orange, size=size.large,
+     color=color.orange, size=size.small,
      text="EXIT", textcolor=color.white)
 
 // ── ALERTS ─────────────────────────────────────────────────────────────────
