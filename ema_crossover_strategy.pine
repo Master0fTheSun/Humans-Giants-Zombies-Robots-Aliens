@@ -12,10 +12,10 @@ strategy(
 )
 
 // ── Inputs ────────────────────────────────────────────────────────────────────
-fastLen = input.int(9,    "Fast EMA Length", minval=2,   group="EMA Settings")
-slowLen = input.int(21,   "Slow EMA Length", minval=3,   group="EMA Settings")
-slPct   = input.float(2.0, "Stop-Loss %",   minval=0.1, maxval=20.0, step=0.1, group="Risk Management")
-tpPct   = input.float(4.0, "Take-Profit %", minval=0.1, maxval=50.0, step=0.1, group="Risk Management")
+fastLen = input.int(9,     "Fast EMA Length", minval=2,   group="EMA Settings")
+slowLen = input.int(21,    "Slow EMA Length", minval=3,   group="EMA Settings")
+slPct   = input.float(2.0, "Stop-Loss %",     minval=0.1, maxval=20.0, step=0.1, group="Risk Management")
+tpPct   = input.float(4.0, "Take-Profit %",   minval=0.1, maxval=50.0, step=0.1, group="Risk Management")
 
 // ── EMA Calculation ───────────────────────────────────────────────────────────
 fastEMA = ta.ema(close, fastLen)
@@ -24,9 +24,12 @@ slowEMA = ta.ema(close, slowLen)
 plot(fastEMA, "Fast EMA", color.new(color.aqua,   0), linewidth=1)
 plot(slowEMA, "Slow EMA", color.new(color.orange, 0), linewidth=1)
 
-// ── Crossover Signals (confirmed on prior bar close — prevents repainting) ────
-longSignal  = ta.crossover(fastEMA,  slowEMA)[1]
-shortSignal = ta.crossunder(fastEMA, slowEMA)[1]
+// ── Crossover Signals (stored in variables, then shifted [1] to prevent repainting) ──
+bullCross = ta.crossover(fastEMA,  slowEMA)
+bearCross = ta.crossunder(fastEMA, slowEMA)
+
+longSignal  = bullCross[1]
+shortSignal = bearCross[1]
 
 // ── Position State ────────────────────────────────────────────────────────────
 inLong  = strategy.position_size > 0
@@ -39,16 +42,18 @@ if longSignal and not inLong
 if shortSignal and not inShort
     strategy.entry("Short", strategy.short)
 
-// ── Stop-Loss & Take-Profit (from average entry price) ────────────────────────
-avgPrice = strategy.position_avg_price
+// ── Stop-Loss & Take-Profit ───────────────────────────────────────────────────
+// nz() replaces na (when flat) with close so strategy.exit() always gets valid prices.
+// The exit orders have no effect when there is no matching open trade.
+safeAvg = nz(strategy.position_avg_price, close)
 
-strategy.exit("Long Exit", "Long",
-    stop  = avgPrice * (1 - slPct / 100),
-    limit = avgPrice * (1 + tpPct / 100))
+strategy.exit("Long Exit", from_entry="Long",
+    stop  = safeAvg * (1 - slPct / 100),
+    limit = safeAvg * (1 + tpPct / 100))
 
-strategy.exit("Short Exit", "Short",
-    stop  = avgPrice * (1 + slPct / 100),
-    limit = avgPrice * (1 - tpPct / 100))
+strategy.exit("Short Exit", from_entry="Short",
+    stop  = safeAvg * (1 + slPct / 100),
+    limit = safeAvg * (1 - tpPct / 100))
 
 // ── Exit Detection (fires the bar after position closes) ──────────────────────
 exitLong  = inLong[1]  and not inLong
@@ -56,7 +61,7 @@ exitShort = inShort[1] and not inShort
 
 // ── Visual Markers ────────────────────────────────────────────────────────────
 
-// Long entry: green triangle below bar (shows on the entry bar)
+// Long entry: green triangle below bar
 plotshape(longSignal and not inLong[1],
     title="Long Entry", style=shape.triangleup,
     location=location.belowbar, color=color.new(color.green, 0), size=size.small)
@@ -66,7 +71,7 @@ plotshape(shortSignal and not inShort[1],
     title="Short Entry", style=shape.triangledown,
     location=location.abovebar, color=color.new(color.red, 0), size=size.small)
 
-// Exit markers: yellow X cross on the bar after position closes
+// Exit markers: yellow X on the bar after position closes
 plotshape(exitLong,
     title="Exit Long", style=shape.xcross,
     location=location.abovebar, color=color.new(color.yellow, 0), size=size.tiny)
