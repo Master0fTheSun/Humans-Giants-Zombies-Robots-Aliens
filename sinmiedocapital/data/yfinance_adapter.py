@@ -164,6 +164,22 @@ def _get_current_price(ticker, daily: pd.DataFrame, decimals: int) -> float:
 # Market status
 # ---------------------------------------------------------------------------
 
+def _get_api_key(name: str) -> str:
+    """Read an API key from st.secrets first, then config.py, then empty string."""
+    try:
+        import streamlit as st
+        val = st.secrets.get(name, "")
+        if val:
+            return str(val)
+    except Exception:
+        pass
+    try:
+        import config as _cfg
+        return str(getattr(_cfg, name, ""))
+    except Exception:
+        return ""
+
+
 def _market_status() -> dict:
     """Rough CME Globex open/closed indicator based on ET time."""
     try:
@@ -434,13 +450,26 @@ def _fetch_macro() -> dict:
         "ten_year_yield": 0.0, "ten_year_change": 0.0,
         "economic_events": [],
     }
-    for symbol, val_key, chg_key in [
-        ("^VIX",      "vix",            "vix_change"),
-        ("^TNX",      "ten_year_yield",  "ten_year_change"),
-        ("DX-Y.NYB",  "dollar_index",    "dollar_change"),
+
+    # FRED first — reliable, never rate-limited
+    fred_key = _get_api_key("FRED_API_KEY")
+    try:
+        from data.fred_adapter import get_fred_macro
+        fred = get_fred_macro(fred_key)
+        macro.update({k: v for k, v in fred.items() if v != 0.0})
+    except Exception:
+        pass
+
+    # yfinance fills any zeros FRED missed
+    for yf_sym, val_key, chg_key in [
+        ("^VIX",     "vix",            "vix_change"),
+        ("^TNX",     "ten_year_yield",  "ten_year_change"),
+        ("DX-Y.NYB", "dollar_index",    "dollar_change"),
     ]:
+        if macro[val_key] != 0.0:
+            continue
         try:
-            h = yf.Ticker(symbol).history(period="5d", interval="1d")
+            h = yf.Ticker(yf_sym).history(period="5d", interval="1d")
             if not h.empty:
                 macro[val_key] = round(float(h["Close"].iloc[-1]), 2)
                 if len(h) >= 2:
@@ -512,8 +541,11 @@ def _fetch_news() -> list:
 # ---------------------------------------------------------------------------
 
 def get_yfinance_data() -> dict:
+    import streamlit as st
     from data.mock_data import get_mock_data
     _mock = get_mock_data()
+
+    td_key = _get_api_key("TWELVEDATA_API_KEY")
 
     errors = []
     contracts = {}
@@ -524,9 +556,42 @@ def get_yfinance_data() -> dict:
     ]:
         try:
             contracts[disp_sym] = _fetch_contract(yf_sym, disp_sym, disp_name)
+            # Cache every successful fetch so we can use it if yfinance fails later
+            st.session_state[f"_last_good_{disp_sym}"] = {
+                "data": contracts[disp_sym],
+                "time": datetime.now().strftime("%I:%M %p"),
+            }
         except Exception as e:
-            errors.append(f"{disp_sym}: {e}")
-            contracts[disp_sym] = _mock["contracts"][disp_sym]
+            err_msg = str(e)
+
+            # Fallback 1: Twelve Data (gets live price, merges with cached structure)
+            if td_key:
+                try:
+                    from data.twelvedata_adapter import get_price as _td_price
+                    td_price = _td_price(disp_sym, td_key)
+                    cached = st.session_state.get(f"_last_good_{disp_sym}")
+                    base = cached["data"].copy() if cached else _mock["contracts"][disp_sym].copy()
+                    prev = base["prev_close"]
+                    base.update({
+                        "current_price": td_price,
+                        "change":        round(td_price - prev, 2),
+                        "change_pct":    round((td_price - prev) / prev * 100, 2) if prev else 0,
+                    })
+                    contracts[disp_sym] = base
+                    errors.append(f"{disp_sym}: yfinance failed ({err_msg}) — using Twelve Data price")
+                    continue
+                except Exception as e2:
+                    err_msg += f" | Twelve Data: {e2}"
+
+            # Fallback 2: last-known-good from this session
+            cached = st.session_state.get(f"_last_good_{disp_sym}")
+            if cached:
+                contracts[disp_sym] = cached["data"]
+                errors.append(f"{disp_sym}: using cached price from {cached['time']} ({err_msg})")
+            else:
+                # Last resort: static mock data
+                contracts[disp_sym] = _mock["contracts"][disp_sym]
+                errors.append(f"{disp_sym}: {err_msg}")
 
     try:
         macro = _fetch_macro()

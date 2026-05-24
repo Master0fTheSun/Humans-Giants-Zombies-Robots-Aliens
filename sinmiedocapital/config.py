@@ -7,6 +7,19 @@ LIVE_DATA_PROVIDER = "yfinance"  # options: "yfinance" | "polygon" | "tradovate"
 API_KEY = ""
 API_SECRET = ""
 
+# --- Free data source API keys (optional but recommended) ---
+
+# Twelve Data: free tier, 800 credits/day — used as price fallback when yfinance fails.
+# Sign up free at: https://twelvedata.com
+# On Streamlit Community Cloud, set via: Settings → Secrets → TWELVEDATA_API_KEY = "your_key"
+TWELVEDATA_API_KEY = ""
+
+# FRED (Federal Reserve Economic Data): free, no rate limits with a key.
+# Used for reliable 10Y yield, VIX, and DXY macro data.
+# Sign up free at: https://fred.stlouisfed.org/docs/api/api_key.html
+# On Streamlit Community Cloud, set via: Settings → Secrets → FRED_API_KEY = "your_key"
+FRED_API_KEY = ""
+
 CONTRACTS = {
     "MCL": {
         "name": "Micro Crude Oil",
