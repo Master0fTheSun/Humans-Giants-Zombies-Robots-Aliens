@@ -1,51 +1,103 @@
-//@version=5
-strategy("EMA Crossover Long/Short Strategy", shorttitle="EMA X-Over", overlay=true, pyramiding=0, default_qty_type=strategy.percent_of_equity, default_qty_value=100, initial_capital=10000, commission_type=strategy.commission.percent, commission_value=0.05)
+//@version=6
+strategy("Intraday MACD + Trend Strategy", shorttitle="MACD-IT", overlay=true, pyramiding=0, default_qty_type=strategy.percent_of_equity, default_qty_value=100, initial_capital=10000, commission_type=strategy.commission.percent, commission_value=0.05)
 
-// ── Inputs ────────────────────────────────────────────────────────────────────
-fastLen = input.int(9,     "Fast EMA Length", minval=2,   group="EMA Settings")
-slowLen = input.int(21,    "Slow EMA Length", minval=3,   group="EMA Settings")
-slPct   = input.float(2.0, "Stop-Loss %",     minval=0.1, maxval=20.0, step=0.1, group="Risk Management")
-tpPct   = input.float(4.0, "Take-Profit %",   minval=0.1, maxval=50.0, step=0.1, group="Risk Management")
+// ── MACD Settings ─────────────────────────────────────────────────────────────
+macdFast = input.int(12,  "MACD Fast Length",   minval=1, group="MACD")
+macdSlow = input.int(26,  "MACD Slow Length",   minval=1, group="MACD")
+macdSig  = input.int(9,   "MACD Signal Length", minval=1, group="MACD")
 
-// ── EMA Calculation ───────────────────────────────────────────────────────────
-fastEMA = ta.ema(close, fastLen)
-slowEMA = ta.ema(close, slowLen)
+// ── Trend Filter ──────────────────────────────────────────────────────────────
+trendLen = input.int(50, "Trend EMA Length", minval=1, group="Trend Filter")
 
-plot(fastEMA, "Fast EMA", color.new(color.aqua, 0), linewidth=1)
-plot(slowEMA, "Slow EMA", color.new(color.orange, 0), linewidth=1)
+// ── ATR Risk Management ───────────────────────────────────────────────────────
+atrLen = input.int(14,    "ATR Length",          minval=1,   group="Risk Management")
+atrSL  = input.float(1.5, "Stop Loss  (ATR ×)",  minval=0.1, step=0.1, group="Risk Management")
+atrTP  = input.float(3.0, "Take Profit (ATR ×)", minval=0.1, step=0.1, group="Risk Management")
 
-// ── Crossover Signals (prior bar confirmation prevents repainting) ─────────────
-bullCross   = ta.crossover(fastEMA, slowEMA)
-bearCross   = ta.crossunder(fastEMA, slowEMA)
-longSignal  = bullCross[1]
-shortSignal = bearCross[1]
+// ── Filters ───────────────────────────────────────────────────────────────────
+useVol  = input.bool(true, "Volume Filter (must exceed SMA)", group="Filters")
+volLen  = input.int(20,    "Volume SMA Length", minval=1,     group="Filters")
+useSess = input.bool(true, "Session Filter",                  group="Filters")
+sess    = input.session("0930-1600", "Trading Session",       group="Filters")
+
+// ── Indicator Calculations ────────────────────────────────────────────────────
+[macdLine, sigLine, hist] = ta.macd(close, macdFast, macdSlow, macdSig)
+trendEMA = ta.ema(close, trendLen)
+atrVal   = ta.atr(atrLen)
+volSMA   = ta.sma(volume, volLen)
+
+// ── Filter Conditions ─────────────────────────────────────────────────────────
+aboveTrend = close > trendEMA
+belowTrend = close < trendEMA
+highVol    = not useVol  or volume > volSMA
+inSession  = not useSess or not na(time(timeframe.period, sess))
+
+// ── Entry Signals ─────────────────────────────────────────────────────────────
+longSig  = ta.crossover(macdLine, sigLine)  and aboveTrend and highVol and inSession
+shortSig = ta.crossunder(macdLine, sigLine) and belowTrend and highVol and inSession
 
 // ── Position State ────────────────────────────────────────────────────────────
 inLong  = strategy.position_size > 0
 inShort = strategy.position_size < 0
 
 // ── Entries ───────────────────────────────────────────────────────────────────
-if longSignal and not inLong
+if longSig and not inLong
     strategy.entry("Long", strategy.long)
 
-if shortSignal and not inShort
+if shortSig and not inShort
     strategy.entry("Short", strategy.short)
 
-// ── Stop-Loss & Take-Profit ───────────────────────────────────────────────────
+// ── ATR-Based SL / TP ─────────────────────────────────────────────────────────
 safeAvg = nz(strategy.position_avg_price, close)
+longSL  = safeAvg - atrVal * atrSL
+longTP  = safeAvg + atrVal * atrTP
+shortSL = safeAvg + atrVal * atrSL
+shortTP = safeAvg - atrVal * atrTP
 
-strategy.exit("Long Exit",  from_entry="Long",  stop=safeAvg * (1 - slPct / 100), limit=safeAvg * (1 + tpPct / 100))
-strategy.exit("Short Exit", from_entry="Short", stop=safeAvg * (1 + slPct / 100), limit=safeAvg * (1 - tpPct / 100))
+strategy.exit("Long Exit",  from_entry="Long",  stop=longSL,  limit=longTP)
+strategy.exit("Short Exit", from_entry="Short", stop=shortSL, limit=shortTP)
 
 // ── Exit Detection ────────────────────────────────────────────────────────────
 exitLong  = inLong[1]  and not inLong
 exitShort = inShort[1] and not inShort
 
-// ── Visual Markers ────────────────────────────────────────────────────────────
-plotshape(longSignal  and not inLong[1],  title="Long Entry",  style=shape.triangleup,   location=location.belowbar, color=color.new(color.green,  0), size=size.small)
-plotshape(shortSignal and not inShort[1], title="Short Entry", style=shape.triangledown, location=location.abovebar, color=color.new(color.red,    0), size=size.small)
-plotshape(exitLong,  title="Exit Long",  style=shape.xcross, location=location.abovebar, color=color.new(color.yellow, 0), size=size.tiny)
-plotshape(exitShort, title="Exit Short", style=shape.xcross, location=location.belowbar, color=color.new(color.yellow, 0), size=size.tiny)
+// ── Alerts (wire these to a webhook/broker for full automation) ───────────────
+alertcondition(longSig,   "Long Entry",  "LONG signal fired — MACD cross above trend EMA")
+alertcondition(shortSig,  "Short Entry", "SHORT signal fired — MACD cross below trend EMA")
+alertcondition(exitLong,  "Exit Long",   "EXIT long position (SL/TP/signal)")
+alertcondition(exitShort, "Exit Short",  "EXIT short position (SL/TP/signal)")
 
+// ── Chart: Trend EMA + SL/TP Lines ───────────────────────────────────────────
+plot(trendEMA, "Trend EMA 50", color.new(color.purple, 0), linewidth=2)
+plot(inLong  ? longSL  : na, "Long SL",  color.new(color.red,   0), linewidth=1, style=plot.style_linebr)
+plot(inLong  ? longTP  : na, "Long TP",  color.new(color.lime,  0), linewidth=1, style=plot.style_linebr)
+plot(inShort ? shortSL : na, "Short SL", color.new(color.red,   0), linewidth=1, style=plot.style_linebr)
+plot(inShort ? shortTP : na, "Short TP", color.new(color.lime,  0), linewidth=1, style=plot.style_linebr)
+
+// ── Entry / Exit Markers ──────────────────────────────────────────────────────
+plotshape(longSig,   title="Long Entry",  style=shape.triangleup,   location=location.belowbar, color=color.new(color.green, 0), size=size.small)
+plotshape(shortSig,  title="Short Entry", style=shape.triangledown, location=location.abovebar, color=color.new(color.red,   0), size=size.small)
+plotshape(exitLong,  title="Exit Long",   style=shape.xcross,       location=location.abovebar, color=color.new(color.yellow, 0), size=size.tiny)
+plotshape(exitShort, title="Exit Short",  style=shape.xcross,       location=location.belowbar, color=color.new(color.yellow, 0), size=size.tiny)
+
+// ── Background Tint ───────────────────────────────────────────────────────────
 bgcolor(inLong  ? color.new(color.green, 90) : na, title="Long Background")
 bgcolor(inShort ? color.new(color.red,   90) : na, title="Short Background")
+
+// ── Info Table (top-right corner) ─────────────────────────────────────────────
+var table t = table.new(position.top_right, 2, 5, bgcolor=color.new(color.black, 70), border_width=1)
+if barstate.islast
+    posLabel = inLong ? "▲  LONG" : inShort ? "▼  SHORT" : "—  FLAT"
+    posColor = inLong ? color.lime : inShort ? color.red : color.silver
+    slVal    = inLong ? longSL  : inShort ? shortSL : na
+    tpVal    = inLong ? longTP  : inShort ? shortTP : na
+    table.cell(t, 0, 0, "Position", text_color=color.white,  text_size=size.small, bgcolor=color.new(color.gray, 60))
+    table.cell(t, 1, 0, posLabel,   text_color=posColor,     text_size=size.small, bgcolor=color.new(color.gray, 60))
+    table.cell(t, 0, 1, "Entry",    text_color=color.silver, text_size=size.small)
+    table.cell(t, 1, 1, (inLong or inShort) ? str.tostring(safeAvg, format.mintick) : "—", text_color=color.white, text_size=size.small)
+    table.cell(t, 0, 2, "Stop",     text_color=color.silver, text_size=size.small)
+    table.cell(t, 1, 2, not na(slVal) ? str.tostring(slVal, format.mintick) : "—", text_color=color.red,  text_size=size.small)
+    table.cell(t, 0, 3, "Target",   text_color=color.silver, text_size=size.small)
+    table.cell(t, 1, 3, not na(tpVal) ? str.tostring(tpVal, format.mintick) : "—", text_color=color.lime, text_size=size.small)
+    table.cell(t, 0, 4, "ATR",      text_color=color.silver, text_size=size.small)
+    table.cell(t, 1, 4, str.tostring(atrVal, format.mintick), text_color=color.white, text_size=size.small)
