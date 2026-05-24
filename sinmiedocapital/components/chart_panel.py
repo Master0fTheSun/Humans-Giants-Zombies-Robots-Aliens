@@ -74,6 +74,9 @@ def _init(s):
         f"trendlines_{s}":      [],
         f"active_tool_{s}":     None,
         f"chart_interval_{s}":  "5m",
+        f"fi_gen_{s}":          0,   # incremented on add → resets form inputs
+        f"po_gen_{s}":          0,
+        f"tl_gen_{s}":          0,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -203,11 +206,12 @@ def _drawings_panel(symbol):
     for i, tl in enumerate(list(tls)):
         c1, c2 = st.columns([7, 0.4])
         with c1:
-            p2 = tl["price1"] if tl.get("horizontal") else tl["price2"]
+            if tl.get("horizontal"):
+                label = f'📏 Horizontal at {tl["price1"]:.2f}'
+            else:
+                label = f'📏 {tl["price1"]:.2f} → {tl["price2"]:.2f}'
             st.markdown(
-                f'<span style="color:{tl["color"]};font-size:0.8em;">📏 '
-                f'{tl["price1"]:.2f}→{p2:.2f}'
-                f'{"  (H)" if tl.get("horizontal") else ""}</span>',
+                f'<span style="color:{tl["color"]};font-size:0.8em;">{label}</span>',
                 unsafe_allow_html=True)
         with c2:
             if st.button("✕", key=f"trm_{symbol}_{i}"):
@@ -264,6 +268,7 @@ def render_chart_panel(symbol: str, height: int = 520):
                      use_container_width=True):
             for k in [f"fibs_{symbol}", f"positions_{symbol}", f"trendlines_{symbol}"]:
                 st.session_state[k] = []
+            st.session_state[tool_key] = None
             st.rerun()
 
     # ── Inline tool form (appears between toolbar and chart) ───────────────
@@ -276,13 +281,16 @@ def render_chart_panel(symbol: str, height: int = 520):
             '<span style="color:#3498db;font-size:0.8em;font-weight:600;">'
             '📐 Fibonacci Retracement — enter swing high & low</span></div>',
             unsafe_allow_html=True)
+        _fg = st.session_state[f"fi_gen_{symbol}"]
         fc = st.columns([2, 2, 1.5, 3])
         with fc[0]:
             fh = st.number_input("Swing High", value=0.00, format="%.2f",
-                                 step=0.01, key=f"fi_h_{symbol}")
+                                 step=0.01, key=f"fi_h_{symbol}_{_fg}",
+                                 help="Top of the retracement range (swing high)")
         with fc[1]:
             fl = st.number_input("Swing Low", value=0.00, format="%.2f",
-                                 step=0.01, key=f"fi_l_{symbol}")
+                                 step=0.01, key=f"fi_l_{symbol}_{_fg}",
+                                 help="Bottom of the retracement range (swing low)")
         with fc[2]:
             st.write("")
             if st.button("✓ Add", key=f"fi_add_{symbol}",
@@ -290,10 +298,11 @@ def render_chart_panel(symbol: str, height: int = 520):
                 if fh > 0 and fl > 0 and fh != fl:
                     st.session_state[f"fibs_{symbol}"].append(
                         {"high": max(fh, fl), "low": min(fh, fl)})
+                    st.session_state[f"fi_gen_{symbol}"] += 1
                     st.session_state[tool_key] = None
                     st.rerun()
                 else:
-                    st.toast("Enter a valid high and low price.", icon="⚠️")
+                    st.toast("Enter a valid high and low — both must be non-zero and different.", icon="⚠️")
 
     elif active_tool == "pos":
         st.markdown(
@@ -302,32 +311,45 @@ def render_chart_panel(symbol: str, height: int = 520):
             '<span style="color:#2ecc71;font-size:0.8em;font-weight:600;">'
             '📊 Position — entry / stop / target</span></div>',
             unsafe_allow_html=True)
+        _pg = st.session_state[f"po_gen_{symbol}"]
         pc = st.columns([1, 1.4, 1.4, 1.4, 1])
         with pc[0]:
             pd_ = st.selectbox("Direction", ["Long", "Short"],
-                               key=f"po_d_{symbol}")
+                               key=f"po_d_{symbol}_{_pg}")
         with pc[1]:
             pe = st.number_input("Entry", value=0.00, format="%.2f",
-                                 step=0.01, key=f"po_e_{symbol}")
+                                 step=0.01, key=f"po_e_{symbol}_{_pg}",
+                                 help="Your planned entry price")
         with pc[2]:
             ps = st.number_input("Stop Loss", value=0.00, format="%.2f",
-                                 step=0.01, key=f"po_s_{symbol}")
+                                 step=0.01, key=f"po_s_{symbol}_{_pg}",
+                                 help="Long: below entry  |  Short: above entry")
         with pc[3]:
             pt = st.number_input("Take Profit", value=0.00, format="%.2f",
-                                 step=0.01, key=f"po_t_{symbol}")
+                                 step=0.01, key=f"po_t_{symbol}_{_pg}",
+                                 help="Long: above entry  |  Short: below entry")
         with pc[4]:
             st.write("")
             if st.button("✓ Add", key=f"po_add_{symbol}",
                          use_container_width=True):
                 if pe > 0 and ps > 0 and pt > 0:
-                    risk   = abs(pe - ps)
-                    reward = abs(pt - pe)
-                    st.session_state[f"positions_{symbol}"].append({
-                        "direction": pd_, "entry": pe, "stop": ps,
-                        "target": pt, "rr": reward / risk if risk else 0,
-                    })
-                    st.session_state[tool_key] = None
-                    st.rerun()
+                    long_ok  = pd_ == "Long"  and ps < pe < pt
+                    short_ok = pd_ == "Short" and pt < pe < ps
+                    if not (long_ok or short_ok):
+                        if pd_ == "Long":
+                            st.toast("Long: Stop must be below Entry, Target above Entry.", icon="⚠️")
+                        else:
+                            st.toast("Short: Stop must be above Entry, Target below Entry.", icon="⚠️")
+                    else:
+                        risk   = abs(pe - ps)
+                        reward = abs(pt - pe)
+                        st.session_state[f"positions_{symbol}"].append({
+                            "direction": pd_, "entry": pe, "stop": ps,
+                            "target": pt, "rr": reward / risk if risk else 0,
+                        })
+                        st.session_state[f"po_gen_{symbol}"] += 1
+                        st.session_state[tool_key] = None
+                        st.rerun()
                 else:
                     st.toast("Enter entry, stop, and target prices.", icon="⚠️")
 
@@ -338,32 +360,38 @@ def render_chart_panel(symbol: str, height: int = 520):
             '<span style="color:#b7960a;font-size:0.8em;font-weight:600;">'
             '📏 Trend Line — two price levels (check Horizontal to lock flat)</span></div>',
             unsafe_allow_html=True)
+        _tg = st.session_state[f"tl_gen_{symbol}"]
         tc = st.columns([1.4, 1.4, 1.4, 1.2, 1])
         with tc[0]:
             tp1 = st.number_input("Price 1", value=0.00, format="%.2f",
-                                  step=0.01, key=f"tl_p1_{symbol}")
+                                  step=0.01, key=f"tl_p1_{symbol}_{_tg}",
+                                  help="Left anchor price (start of line)")
         with tc[1]:
             tp2 = st.number_input("Price 2", value=0.00, format="%.2f",
-                                  step=0.01, key=f"tl_p2_{symbol}")
+                                  step=0.01, key=f"tl_p2_{symbol}_{_tg}",
+                                  help="Right anchor price (end of line) — not needed if Horizontal")
         with tc[2]:
             tcolor = st.selectbox("Color", list(_COLOR_MAP.keys()),
-                                  key=f"tl_c_{symbol}")
+                                  key=f"tl_c_{symbol}_{_tg}")
         with tc[3]:
-            th = st.checkbox("Horizontal ⇧", key=f"tl_h_{symbol}")
+            th = st.checkbox("Horizontal ⇧", key=f"tl_h_{symbol}_{_tg}",
+                             help="Lock line flat — only Price 1 needed")
         with tc[4]:
             st.write("")
             if st.button("✓ Add", key=f"tl_add_{symbol}",
                          use_container_width=True):
-                if tp1 > 0:
+                valid = tp1 > 0 and (th or tp2 > 0)
+                if valid:
                     st.session_state[f"trendlines_{symbol}"].append({
                         "price1": tp1, "price2": tp2,
                         "horizontal": th,
                         "color": _COLOR_MAP[tcolor],
                     })
+                    st.session_state[f"tl_gen_{symbol}"] += 1
                     st.session_state[tool_key] = None
                     st.rerun()
                 else:
-                    st.toast("Enter at least Price 1.", icon="⚠️")
+                    st.toast("Enter Price 1 and Price 2 (or check Horizontal for a flat line).", icon="⚠️")
 
     # ── Load data ──────────────────────────────────────────────────────────
     interval = st.session_state[iv_key]
