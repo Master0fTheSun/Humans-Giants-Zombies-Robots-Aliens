@@ -1,0 +1,80 @@
+//@version=5
+strategy(
+    title             = "EMA Crossover Long/Short Strategy",
+    shorttitle        = "EMA X-Over",
+    overlay           = true,
+    pyramiding        = 0,
+    default_qty_type  = strategy.percent_of_equity,
+    default_qty_value = 100,
+    initial_capital   = 10000,
+    commission_type   = strategy.commission.percent,
+    commission_value  = 0.05
+)
+
+// ── Inputs ────────────────────────────────────────────────────────────────────
+fastLen = input.int(9,    "Fast EMA Length", minval=2,   group="EMA Settings")
+slowLen = input.int(21,   "Slow EMA Length", minval=3,   group="EMA Settings")
+slPct   = input.float(2.0, "Stop-Loss %",   minval=0.1, maxval=20.0, step=0.1, group="Risk Management")
+tpPct   = input.float(4.0, "Take-Profit %", minval=0.1, maxval=50.0, step=0.1, group="Risk Management")
+
+// ── EMA Calculation ───────────────────────────────────────────────────────────
+fastEMA = ta.ema(close, fastLen)
+slowEMA = ta.ema(close, slowLen)
+
+plot(fastEMA, "Fast EMA", color.new(color.aqua,   0), linewidth=1)
+plot(slowEMA, "Slow EMA", color.new(color.orange, 0), linewidth=1)
+
+// ── Crossover Signals (confirmed on prior bar close — prevents repainting) ────
+longSignal  = ta.crossover(fastEMA,  slowEMA)[1]
+shortSignal = ta.crossunder(fastEMA, slowEMA)[1]
+
+// ── Position State ────────────────────────────────────────────────────────────
+inLong  = strategy.position_size > 0
+inShort = strategy.position_size < 0
+
+// ── Entries ───────────────────────────────────────────────────────────────────
+if longSignal and not inLong
+    strategy.entry("Long", strategy.long)
+
+if shortSignal and not inShort
+    strategy.entry("Short", strategy.short)
+
+// ── Stop-Loss & Take-Profit (from average entry price) ────────────────────────
+avgPrice = strategy.position_avg_price
+
+strategy.exit("Long Exit", "Long",
+    stop  = avgPrice * (1 - slPct / 100),
+    limit = avgPrice * (1 + tpPct / 100))
+
+strategy.exit("Short Exit", "Short",
+    stop  = avgPrice * (1 + slPct / 100),
+    limit = avgPrice * (1 - tpPct / 100))
+
+// ── Exit Detection (fires the bar after position closes) ──────────────────────
+exitLong  = inLong[1]  and not inLong
+exitShort = inShort[1] and not inShort
+
+// ── Visual Markers ────────────────────────────────────────────────────────────
+
+// Long entry: green triangle below bar (shows on the entry bar)
+plotshape(longSignal and not inLong[1],
+    title="Long Entry", style=shape.triangleup,
+    location=location.belowbar, color=color.new(color.green, 0), size=size.small)
+
+// Short entry: red triangle above bar
+plotshape(shortSignal and not inShort[1],
+    title="Short Entry", style=shape.triangledown,
+    location=location.abovebar, color=color.new(color.red, 0), size=size.small)
+
+// Exit markers: yellow X cross on the bar after position closes
+plotshape(exitLong,
+    title="Exit Long", style=shape.xcross,
+    location=location.abovebar, color=color.new(color.yellow, 0), size=size.tiny)
+
+plotshape(exitShort,
+    title="Exit Short", style=shape.xcross,
+    location=location.belowbar, color=color.new(color.yellow, 0), size=size.tiny)
+
+// Background tint: green while long, red while short
+bgcolor(inLong  ? color.new(color.green, 90) : na, title="Long Background")
+bgcolor(inShort ? color.new(color.red,   90) : na, title="Short Background")
