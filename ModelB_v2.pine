@@ -211,71 +211,36 @@ plot(lastPL, "Swing Low",  color=color.new(color.lime, 50), linewidth=1)
 plot(useDisc and pivotsDefined ? midPoint : na, "Range Mid",
      color=color.new(color.yellow, 60), linewidth=1, style=plot.style_circles)
 
-// ── ENTRY LABELS — large "L" / "S" so they're always visible ──────────────
+// ── L / S / E LABELS ───────────────────────────────────────────────────────
 
-// Long entry: big green label-arrow pointing up, below the bar
-plotshape(longSignal, title="Long Entry (L)",
+plotshape(longSignal, title="L – Long",
      style=shape.labelup, location=location.belowbar,
-     color=color.green, size=size.large,
+     color=color.green, size=size.huge,
      text="L", textcolor=color.white)
 
-// Short entry: big red label-arrow pointing down, above the bar
-plotshape(shortSignal, title="Short Entry (S)",
+plotshape(shortSignal, title="S – Short",
      style=shape.labeldown, location=location.abovebar,
-     color=color.red, size=size.large,
+     color=color.red, size=size.huge,
      text="S", textcolor=color.white)
 
-// BOS events that didn't qualify as a full signal — small marker only
-plotshape(bullBOS and not longSignal, title="BOS ↑",
-     style=shape.triangleup, location=location.belowbar,
-     color=color.new(color.lime, 40), size=size.tiny, text="bos")
-plotshape(bearBOS and not shortSignal, title="BOS ↓",
-     style=shape.triangledown, location=location.abovebar,
-     color=color.new(color.red, 40), size=size.tiny, text="bos")
+plotshape(longExit, title="E – Long Exit",
+     style=shape.labeldown, location=location.abovebar,
+     color=color.orange, size=size.large,
+     text="E", textcolor=color.white)
+
+plotshape(shortExit, title="E – Short Exit",
+     style=shape.labelup, location=location.belowbar,
+     color=color.orange, size=size.large,
+     text="E", textcolor=color.white)
 
 // ── ACTIVE TRADE LEVELS ────────────────────────────────────────────────────
 
 plot(inLong or inShort ? entryPrice : na, "Entry",
-     color=color.gray,  linewidth=1, style=plot.style_linebr)
+     color=color.gray, linewidth=1, style=plot.style_linebr)
 plot(inLong or inShort ? stopPrice  : na, "SL",
-     color=color.red,   linewidth=2, style=plot.style_linebr)
+     color=color.red,  linewidth=2, style=plot.style_linebr)
 plot(inLong or inShort ? takePrice  : na, "TP",
-     color=color.lime,  linewidth=2, style=plot.style_linebr)
-
-// ── EXIT LABELS — "E" on every exit, direction determines position ─────────
-// Long exit: orange label above bar pointing down
-// Short exit: orange label below bar pointing up
-// Colour shifts: green = TP, red = SL, orange = SMA20 — so you still know why
-
-plotshape(longTP, title="Long TP (E)",
-     style=shape.labeldown, location=location.abovebar,
-     color=color.new(color.lime, 0), size=size.normal,
-     text="E", textcolor=color.white)
-
-plotshape(longSL, title="Long SL (E)",
-     style=shape.labeldown, location=location.abovebar,
-     color=color.new(color.red, 0), size=size.normal,
-     text="E", textcolor=color.white)
-
-plotshape(longSMA, title="Long SMA Exit (E)",
-     style=shape.labeldown, location=location.abovebar,
-     color=color.new(color.orange, 0), size=size.normal,
-     text="E", textcolor=color.white)
-
-plotshape(shortTP, title="Short TP (E)",
-     style=shape.labelup, location=location.belowbar,
-     color=color.new(color.lime, 0), size=size.normal,
-     text="E", textcolor=color.white)
-
-plotshape(shortSL, title="Short SL (E)",
-     style=shape.labelup, location=location.belowbar,
-     color=color.new(color.red, 0), size=size.normal,
-     text="E", textcolor=color.white)
-
-plotshape(shortSMA, title="Short SMA Exit (E)",
-     style=shape.labelup, location=location.belowbar,
-     color=color.new(color.orange, 0), size=size.normal,
-     text="E", textcolor=color.white)
+     color=color.lime, linewidth=2, style=plot.style_linebr)
 
 // ── ALERTS ─────────────────────────────────────────────────────────────────
 
