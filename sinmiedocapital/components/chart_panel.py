@@ -1,9 +1,11 @@
 """
-Plotly candlestick chart with form-based drawing tools:
-  • Free draw line  — Plotly built-in modebar
-  • Fibonacci       — enter high / low, draws 7 levels
-  • Trend line      — two prices + horizontal lock (Shift equivalent)
-  • Long / Short    — entry / stop / target draws risk & reward zones
+Plotly candlestick chart with drawing toolbar above the chart.
+
+Modebar (top-right of chart): zoom, pan, drawline, freehand, rectangle,
+  circle, eraser — all native Plotly interactive tools.
+
+Toolbar row (above chart): Fibonacci | Position | Trend Line | Clear All
+  Click a tool to open its input form inline. Click Draw to add to chart.
 """
 
 import streamlit as st
@@ -12,9 +14,9 @@ import numpy as np
 import plotly.graph_objects as go
 import yfinance as yf
 
-_TICKER_MAP = {"MCL": "CL=F", "MES": "ES=F"}
+_TICKER_MAP      = {"MCL": "CL=F", "MES": "ES=F"}
 _INTERVAL_OPTIONS = ["5m", "15m", "30m", "1h", "1d"]
-_PERIOD_MAP = {"5m": "5d", "15m": "5d", "30m": "1mo", "1h": "1mo", "1d": "6mo"}
+_PERIOD_MAP      = {"5m": "5d", "15m": "5d", "30m": "1mo", "1h": "1mo", "1d": "6mo"}
 
 _FIB_LEVELS = [
     (0.000, "#636e72", "0%"),
@@ -26,8 +28,17 @@ _FIB_LEVELS = [
     (1.000, "#636e72", "100%"),
 ]
 
+_COLOR_MAP = {
+    "Yellow": "#f1c40f",
+    "White":  "#bdc3c7",
+    "Cyan":   "#00bcd4",
+    "Orange": "#f39c12",
+    "Red":    "#e74c3c",
+    "Green":  "#2ecc71",
+}
 
-# ── Data ─────────────────────────────────────────────────────────────────────
+
+# ── Data ──────────────────────────────────────────────────────────────────────
 
 @st.cache_data(ttl=300, show_spinner=False)
 def _download(ticker: str, period: str, interval: str) -> pd.DataFrame:
@@ -54,19 +65,22 @@ def _vwap_daily(df: pd.DataFrame) -> pd.Series:
             df["Volume"].groupby(dates).cumsum().replace(0, np.nan))
 
 
-# ── State ─────────────────────────────────────────────────────────────────────
+# ── State init ────────────────────────────────────────────────────────────────
 
 def _init(s):
-    for k, v in [
-        (f"fibs_{s}",       []),
-        (f"positions_{s}",  []),
-        (f"trendlines_{s}", []),
-    ]:
+    defaults = {
+        f"fibs_{s}":            [],
+        f"positions_{s}":       [],
+        f"trendlines_{s}":      [],
+        f"active_tool_{s}":     None,
+        f"chart_interval_{s}":  "5m",
+    }
+    for k, v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
 
 
-# ── Chart drawing ─────────────────────────────────────────────────────────────
+# ── Drawing helpers ───────────────────────────────────────────────────────────
 
 def _draw_fibs(fig, symbol, x0, x1):
     for fib in st.session_state[f"fibs_{symbol}"]:
@@ -112,7 +126,8 @@ def _draw_positions(fig, symbol, x0, x1):
                 text=["", f"  {lbl}"],
                 textposition="middle right",
                 textfont=dict(color=color, size=9),
-                line=dict(color=color, width=1.4 if "Long" in lbl or "Short" in lbl else 1,
+                line=dict(color=color,
+                          width=1.4 if "Long" in lbl or "Short" in lbl else 1,
                           dash="solid" if "Long" in lbl or "Short" in lbl else "dash"),
                 showlegend=False,
                 hovertemplate=f"{lbl}<extra></extra>",
@@ -124,71 +139,73 @@ def _draw_trendlines(fig, symbol, x0, x1):
         p2 = tl["price1"] if tl.get("horizontal") else tl["price2"]
         fig.add_trace(go.Scatter(
             x=[x0, x1], y=[tl["price1"], p2],
-            mode="lines", line=dict(color=tl["color"], width=1.5),
+            mode="lines",
+            line=dict(color=tl["color"], width=1.5),
             showlegend=False,
             hovertemplate=f"Line {tl['price1']:.2f}→{p2:.2f}<extra></extra>",
         ))
 
 
-# ── Drawings management ───────────────────────────────────────────────────────
+# ── Active drawings panel (below chart) ──────────────────────────────────────
 
-def _manage_drawings(symbol):
+def _drawings_panel(symbol):
     fibs = st.session_state[f"fibs_{symbol}"]
     pos  = st.session_state[f"positions_{symbol}"]
     tls  = st.session_state[f"trendlines_{symbol}"]
     if not (fibs or pos or tls):
         return
 
-    st.markdown('<div style="font-size:0.8em;color:#5577aa;margin-top:6px;'
-                'margin-bottom:2px;">Active drawings — edit prices to move, ✕ to delete:</div>',
-                unsafe_allow_html=True)
+    st.markdown(
+        '<div style="font-size:0.78em;color:#5577aa;font-weight:600;'
+        'margin:6px 0 3px 0;">Active Drawings</div>',
+        unsafe_allow_html=True,
+    )
 
     for i, fib in enumerate(list(fibs)):
-        c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
+        c1, c2, c3, c4 = st.columns([1.8, 2, 2, 0.4])
         with c1:
+            st.markdown('<span style="color:#3498db;font-size:0.8em;">📐 Fib</span>',
+                        unsafe_allow_html=True)
+        with c2:
             nh = st.number_input("H", value=fib["high"], format="%.2f", step=0.01,
                                  key=f"fh_{symbol}_{i}", label_visibility="collapsed")
-        with c2:
+        with c3:
             nl = st.number_input("L", value=fib["low"], format="%.2f", step=0.01,
                                  key=f"fl_{symbol}_{i}", label_visibility="collapsed")
-        with c3:
-            st.markdown('<span style="color:#3498db;font-size:0.82em;">📐 Fib</span>',
-                        unsafe_allow_html=True)
         with c4:
             if st.button("✕", key=f"frm_{symbol}_{i}"):
                 fibs.pop(i); st.rerun()
         if nh != fib["high"] or nl != fib["low"]:
-            fibs[i] = {"high": max(nh, nl), "low": min(nh, nl)}; st.rerun()
+            fibs[i] = {"high": max(nh, nl), "low": min(nh, nl)}
+            st.rerun()
 
     for i, p in enumerate(list(pos)):
         clr = "#2ecc71" if p["direction"] == "Long" else "#e74c3c"
-        c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 1, 1])
+        c1, c2, c3, c4, c5 = st.columns([1.2, 1.2, 1.2, 1.2, 0.4])
         with c1:
-            st.markdown(f'<span style="color:{clr};font-size:0.82em;">'
-                        f'{"▲" if p["direction"]=="Long" else "▼"} {p["direction"]}</span>',
-                        unsafe_allow_html=True)
+            st.markdown(
+                f'<span style="color:{clr};font-size:0.8em;">'
+                f'{"▲" if p["direction"]=="Long" else "▼"} {p["direction"]}</span>',
+                unsafe_allow_html=True)
         with c2:
-            p["entry"]  = st.number_input("E", value=p["entry"],  format="%.2f",
-                                          step=0.01, key=f"pe_{symbol}_{i}",
-                                          label_visibility="collapsed")
+            p["entry"]  = st.number_input("E", value=p["entry"],  format="%.2f", step=0.01,
+                                          key=f"pe_{symbol}_{i}", label_visibility="collapsed")
         with c3:
-            p["stop"]   = st.number_input("S", value=p["stop"],   format="%.2f",
-                                          step=0.01, key=f"ps_{symbol}_{i}",
-                                          label_visibility="collapsed")
+            p["stop"]   = st.number_input("S", value=p["stop"],   format="%.2f", step=0.01,
+                                          key=f"ps_{symbol}_{i}", label_visibility="collapsed")
         with c4:
-            p["target"] = st.number_input("T", value=p["target"], format="%.2f",
-                                          step=0.01, key=f"pt_{symbol}_{i}",
-                                          label_visibility="collapsed")
+            p["target"] = st.number_input("T", value=p["target"], format="%.2f", step=0.01,
+                                          key=f"pt_{symbol}_{i}", label_visibility="collapsed")
         with c5:
             if st.button("✕", key=f"prm_{symbol}_{i}"):
                 pos.pop(i); st.rerun()
 
     for i, tl in enumerate(list(tls)):
-        c1, c2 = st.columns([5, 1])
+        c1, c2 = st.columns([7, 0.4])
         with c1:
             p2 = tl["price1"] if tl.get("horizontal") else tl["price2"]
             st.markdown(
-                f'<span style="color:{tl["color"]};font-size:0.82em;">📏 '
+                f'<span style="color:{tl["color"]};font-size:0.8em;">📏 '
                 f'{tl["price1"]:.2f}→{p2:.2f}'
                 f'{"  (H)" if tl.get("horizontal") else ""}</span>',
                 unsafe_allow_html=True)
@@ -199,25 +216,156 @@ def _manage_drawings(symbol):
 
 # ── Main render ───────────────────────────────────────────────────────────────
 
-def render_chart_panel(symbol: str, height: int = 500):
-    ticker = _TICKER_MAP.get(symbol, symbol)
+def render_chart_panel(symbol: str, height: int = 520):
+    ticker   = _TICKER_MAP.get(symbol, symbol)
     _init(symbol)
+    iv_key   = f"chart_interval_{symbol}"
+    tool_key = f"active_tool_{symbol}"
 
-    iv_key = f"chart_interval_{symbol}"
-    if iv_key not in st.session_state:
-        st.session_state[iv_key] = "5m"
-
-    cols = st.columns(len(_INTERVAL_OPTIONS) + 2)
-    with cols[0]:
-        st.markdown('<span style="color:#5577aa;font-size:0.8em;line-height:2.4;">Timeframe:</span>',
-                    unsafe_allow_html=True)
+    # ── Timeframe row ──────────────────────────────────────────────────────
+    tf_cols = st.columns([1.4] + [0.7] * len(_INTERVAL_OPTIONS))
+    with tf_cols[0]:
+        st.markdown(
+            '<span style="color:#5577aa;font-size:0.8em;line-height:2.6;">Timeframe</span>',
+            unsafe_allow_html=True)
     for i, iv in enumerate(_INTERVAL_OPTIONS):
-        with cols[i + 1]:
-            if st.button(f"**{iv}**" if st.session_state[iv_key] == iv else iv,
-                         key=f"btn_{symbol}_{iv}"):
+        with tf_cols[i + 1]:
+            selected = st.session_state[iv_key] == iv
+            if st.button(f"**{iv}**" if selected else iv,
+                         key=f"btn_{symbol}_{iv}", use_container_width=True):
                 st.session_state[iv_key] = iv
                 st.rerun()
 
+    # ── Drawing toolbar row ────────────────────────────────────────────────
+    st.markdown(
+        '<div style="background:#eef3ff;border-radius:6px;padding:1px 8px 1px 8px;'
+        'margin:4px 0 0 0;">'
+        '<span style="color:#5577aa;font-size:0.76em;font-weight:600;">'
+        'DRAWING TOOLS</span></div>',
+        unsafe_allow_html=True,
+    )
+
+    tool_cols = st.columns([1.3, 1.3, 1.5, 0.2, 1])
+    tool_defs = [
+        ("📐 Fibonacci", "fib"),
+        ("📊 Position",  "pos"),
+        ("📏 Trend Line","tl"),
+    ]
+    for i, (label, tid) in enumerate(tool_defs):
+        with tool_cols[i]:
+            active = st.session_state[tool_key] == tid
+            btn_label = f"**{label} ▾**" if active else label
+            if st.button(btn_label, key=f"tool_{symbol}_{tid}",
+                         use_container_width=True):
+                st.session_state[tool_key] = None if active else tid
+                st.rerun()
+    with tool_cols[4]:
+        if st.button("🗑 Clear All", key=f"clr_{symbol}",
+                     use_container_width=True):
+            for k in [f"fibs_{symbol}", f"positions_{symbol}", f"trendlines_{symbol}"]:
+                st.session_state[k] = []
+            st.rerun()
+
+    # ── Inline tool form (appears between toolbar and chart) ───────────────
+    active_tool = st.session_state[tool_key]
+
+    if active_tool == "fib":
+        st.markdown(
+            '<div style="background:#f0f4ff;border-left:3px solid #3498db;'
+            'padding:6px 10px;border-radius:0 4px 4px 0;margin:4px 0;">'
+            '<span style="color:#3498db;font-size:0.8em;font-weight:600;">'
+            '📐 Fibonacci Retracement — enter swing high & low</span></div>',
+            unsafe_allow_html=True)
+        fc = st.columns([2, 2, 1.5, 3])
+        with fc[0]:
+            fh = st.number_input("Swing High", value=0.00, format="%.2f",
+                                 step=0.01, key=f"fi_h_{symbol}")
+        with fc[1]:
+            fl = st.number_input("Swing Low", value=0.00, format="%.2f",
+                                 step=0.01, key=f"fi_l_{symbol}")
+        with fc[2]:
+            st.write("")
+            if st.button("✓ Add", key=f"fi_add_{symbol}",
+                         use_container_width=True):
+                if fh > 0 and fl > 0 and fh != fl:
+                    st.session_state[f"fibs_{symbol}"].append(
+                        {"high": max(fh, fl), "low": min(fh, fl)})
+                    st.session_state[tool_key] = None
+                    st.rerun()
+                else:
+                    st.toast("Enter a valid high and low price.", icon="⚠️")
+
+    elif active_tool == "pos":
+        st.markdown(
+            '<div style="background:#f0f4ff;border-left:3px solid #2ecc71;'
+            'padding:6px 10px;border-radius:0 4px 4px 0;margin:4px 0;">'
+            '<span style="color:#2ecc71;font-size:0.8em;font-weight:600;">'
+            '📊 Position — entry / stop / target</span></div>',
+            unsafe_allow_html=True)
+        pc = st.columns([1, 1.4, 1.4, 1.4, 1])
+        with pc[0]:
+            pd_ = st.selectbox("Direction", ["Long", "Short"],
+                               key=f"po_d_{symbol}")
+        with pc[1]:
+            pe = st.number_input("Entry", value=0.00, format="%.2f",
+                                 step=0.01, key=f"po_e_{symbol}")
+        with pc[2]:
+            ps = st.number_input("Stop Loss", value=0.00, format="%.2f",
+                                 step=0.01, key=f"po_s_{symbol}")
+        with pc[3]:
+            pt = st.number_input("Take Profit", value=0.00, format="%.2f",
+                                 step=0.01, key=f"po_t_{symbol}")
+        with pc[4]:
+            st.write("")
+            if st.button("✓ Add", key=f"po_add_{symbol}",
+                         use_container_width=True):
+                if pe > 0 and ps > 0 and pt > 0:
+                    risk   = abs(pe - ps)
+                    reward = abs(pt - pe)
+                    st.session_state[f"positions_{symbol}"].append({
+                        "direction": pd_, "entry": pe, "stop": ps,
+                        "target": pt, "rr": reward / risk if risk else 0,
+                    })
+                    st.session_state[tool_key] = None
+                    st.rerun()
+                else:
+                    st.toast("Enter entry, stop, and target prices.", icon="⚠️")
+
+    elif active_tool == "tl":
+        st.markdown(
+            '<div style="background:#f0f4ff;border-left:3px solid #f1c40f;'
+            'padding:6px 10px;border-radius:0 4px 4px 0;margin:4px 0;">'
+            '<span style="color:#b7960a;font-size:0.8em;font-weight:600;">'
+            '📏 Trend Line — two price levels (check Horizontal to lock flat)</span></div>',
+            unsafe_allow_html=True)
+        tc = st.columns([1.4, 1.4, 1.4, 1.2, 1])
+        with tc[0]:
+            tp1 = st.number_input("Price 1", value=0.00, format="%.2f",
+                                  step=0.01, key=f"tl_p1_{symbol}")
+        with tc[1]:
+            tp2 = st.number_input("Price 2", value=0.00, format="%.2f",
+                                  step=0.01, key=f"tl_p2_{symbol}")
+        with tc[2]:
+            tcolor = st.selectbox("Color", list(_COLOR_MAP.keys()),
+                                  key=f"tl_c_{symbol}")
+        with tc[3]:
+            th = st.checkbox("Horizontal ⇧", key=f"tl_h_{symbol}")
+        with tc[4]:
+            st.write("")
+            if st.button("✓ Add", key=f"tl_add_{symbol}",
+                         use_container_width=True):
+                if tp1 > 0:
+                    st.session_state[f"trendlines_{symbol}"].append({
+                        "price1": tp1, "price2": tp2,
+                        "horizontal": th,
+                        "color": _COLOR_MAP[tcolor],
+                    })
+                    st.session_state[tool_key] = None
+                    st.rerun()
+                else:
+                    st.toast("Enter at least Price 1.", icon="⚠️")
+
+    # ── Load data ──────────────────────────────────────────────────────────
     interval = st.session_state[iv_key]
     intraday = interval in ("5m", "15m", "30m", "1h")
 
@@ -236,113 +384,59 @@ def render_chart_panel(symbol: str, height: int = 500):
     _draw_trendlines(fig, symbol, x0, x1)
 
     fig.add_trace(go.Candlestick(
-        x=df.index, open=df["Open"], high=df["High"],
-        low=df["Low"], close=df["Close"], name=symbol,
+        x=df.index,
+        open=df["Open"], high=df["High"],
+        low=df["Low"],   close=df["Close"],
+        name=symbol,
         increasing_line_color="#2ecc71", decreasing_line_color="#e74c3c",
         increasing_fillcolor="#2ecc71",  decreasing_fillcolor="#e74c3c",
     ))
 
     ema20 = df["Close"].ewm(span=20, adjust=False).mean()
-    fig.add_trace(go.Scatter(x=df.index, y=ema20, mode="lines", name="EMA 20",
-                             line=dict(color="#1e40af", width=1.3)))
+    fig.add_trace(go.Scatter(
+        x=df.index, y=ema20, mode="lines", name="EMA 20",
+        line=dict(color="#1e40af", width=1.3),
+    ))
 
     if intraday:
         vwap = _vwap_daily(df)
-        fig.add_trace(go.Scatter(x=df.index, y=vwap, mode="lines", name="VWAP",
-                                 line=dict(color="#f39c12", width=1.4, dash="dot")))
+        fig.add_trace(go.Scatter(
+            x=df.index, y=vwap, mode="lines", name="VWAP",
+            line=dict(color="#f39c12", width=1.4, dash="dot"),
+        ))
 
     fig.update_layout(
         height=height,
         margin=dict(l=0, r=0, t=10, b=0),
-        paper_bgcolor="#f5f8ff", plot_bgcolor="#ffffff",
+        paper_bgcolor="#f5f8ff",
+        plot_bgcolor="#ffffff",
         font=dict(color="#0a1428", size=11),
-        xaxis=dict(gridcolor="#e8eef8", showgrid=True,
-                   rangeslider=dict(visible=False), type="date"),
+        xaxis=dict(
+            gridcolor="#e8eef8", showgrid=True,
+            rangeslider=dict(visible=False), type="date",
+        ),
         yaxis=dict(gridcolor="#e8eef8", showgrid=True, side="right"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.01,
-                    xanchor="left", x=0, font=dict(size=10),
-                    bgcolor="rgba(0,0,0,0)"),
+        legend=dict(
+            orientation="h", yanchor="bottom", y=1.01,
+            xanchor="left", x=0, font=dict(size=10),
+            bgcolor="rgba(0,0,0,0)",
+        ),
         hovermode="x unified",
         newshape=dict(line=dict(color="#f1c40f", width=1.5)),
     )
 
     st.plotly_chart(fig, use_container_width=True, config={
-        "displayModeBar": True,
-        "modeBarButtonsToAdd": ["drawline", "eraseshape"],
+        "displayModeBar":        True,
+        "modeBarButtonsToAdd":   [
+            "drawline",
+            "drawopenpath",
+            "drawcircle",
+            "drawrect",
+            "eraseshape",
+        ],
         "modeBarButtonsToRemove": ["select2d", "lasso2d"],
-        "displaylogo": False,
-        "scrollZoom": True,
+        "displaylogo":           False,
+        "scrollZoom":            True,
     })
 
-    # ── Drawing tools ─────────────────────────────────────────────────────
-    with st.expander("🖊 Drawing Tools", expanded=False):
-        tab_fib, tab_pos, tab_tl = st.tabs(["📐 Fibonacci", "📊 Position", "📏 Trend Line"])
-
-        with tab_fib:
-            f1, f2, f3 = st.columns([2, 2, 1])
-            with f1:
-                fh = st.number_input("High", value=0.00, format="%.2f", step=0.01,
-                                     key=f"fi_h_{symbol}", label_visibility="collapsed",
-                                     placeholder="High price")
-            with f2:
-                fl = st.number_input("Low", value=0.00, format="%.2f", step=0.01,
-                                     key=f"fi_l_{symbol}", label_visibility="collapsed",
-                                     placeholder="Low price")
-            with f3:
-                if st.button("Draw", key=f"fi_add_{symbol}"):
-                    if fh > 0 and fl > 0 and fh != fl:
-                        st.session_state[f"fibs_{symbol}"].append(
-                            {"high": max(fh, fl), "low": min(fh, fl)})
-                        st.rerun()
-            st.caption("Draws 7 Fibonacci levels between high and low.")
-
-        with tab_pos:
-            p1, p2, p3, p4, p5 = st.columns([1, 1, 1, 1, 1])
-            with p1:
-                pd_ = st.selectbox("", ["Long", "Short"], key=f"po_d_{symbol}",
-                                   label_visibility="collapsed")
-            with p2:
-                pe = st.number_input("Entry", value=0.00, format="%.2f", step=0.01,
-                                     key=f"po_e_{symbol}", label_visibility="collapsed")
-            with p3:
-                ps = st.number_input("Stop", value=0.00, format="%.2f", step=0.01,
-                                     key=f"po_s_{symbol}", label_visibility="collapsed")
-            with p4:
-                pt = st.number_input("Target", value=0.00, format="%.2f", step=0.01,
-                                     key=f"po_t_{symbol}", label_visibility="collapsed")
-            with p5:
-                if st.button("Draw", key=f"po_add_{symbol}"):
-                    if pe > 0 and ps > 0 and pt > 0:
-                        risk = abs(pe - ps); reward = abs(pt - pe)
-                        rr = reward / risk if risk else 0
-                        st.session_state[f"positions_{symbol}"].append(
-                            {"direction": pd_, "entry": pe, "stop": ps,
-                             "target": pt, "rr": rr})
-                        st.rerun()
-            st.caption("Draws risk (red) and reward (green) zones with entry, SL, and TP lines.")
-
-        with tab_tl:
-            t1, t2, t3, t4, t5 = st.columns([1, 1, 1, 1, 1])
-            with t1:
-                tp1 = st.number_input("Price 1", value=0.00, format="%.2f", step=0.01,
-                                      key=f"tl_p1_{symbol}", label_visibility="collapsed")
-            with t2:
-                tp2 = st.number_input("Price 2", value=0.00, format="%.2f", step=0.01,
-                                      key=f"tl_p2_{symbol}", label_visibility="collapsed")
-            with t3:
-                tc = st.selectbox("", ["Yellow", "White", "Cyan", "Orange"],
-                                  key=f"tl_c_{symbol}", label_visibility="collapsed")
-                cmap = {"White": "#bdc3c7", "Yellow": "#f1c40f",
-                        "Cyan": "#00bcd4", "Orange": "#f39c12"}
-            with t4:
-                th = st.checkbox("Horizontal ⇧", key=f"tl_h_{symbol}")
-            with t5:
-                if st.button("Draw", key=f"tl_add_{symbol}"):
-                    if tp1 > 0:
-                        st.session_state[f"trendlines_{symbol}"].append(
-                            {"price1": tp1, "price2": tp2,
-                             "horizontal": th, "color": cmap[tc]})
-                        st.rerun()
-            st.caption("Check Horizontal ⇧ to lock the line flat.")
-
-    _manage_drawings(symbol)
+    _drawings_panel(symbol)
