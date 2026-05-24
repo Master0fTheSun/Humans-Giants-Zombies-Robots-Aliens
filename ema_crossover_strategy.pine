@@ -61,24 +61,45 @@ strategy.exit("Short Exit", from_entry="Short", stop=shortSL, limit=shortTP)
 exitLong  = inLong[1]  and not inLong
 exitShort = inShort[1] and not inShort
 
-// ── Alerts (wire these to a webhook/broker for full automation) ───────────────
-alertcondition(longSig,   "Long Entry",  "LONG signal fired — MACD cross above trend EMA")
-alertcondition(shortSig,  "Short Entry", "SHORT signal fired — MACD cross below trend EMA")
-alertcondition(exitLong,  "Exit Long",   "EXIT long position (SL/TP/signal)")
-alertcondition(exitShort, "Exit Short",  "EXIT short position (SL/TP/signal)")
+// ── Profit on most recently closed trade ──────────────────────────────────────
+lastPnL   = strategy.closedtrades > 0 ? strategy.closedtrades.profit(strategy.closedtrades - 1) : 0
+isWin     = lastPnL > 0
 
-// ── Chart: Trend EMA + SL/TP Lines ───────────────────────────────────────────
+// ── Alerts ────────────────────────────────────────────────────────────────────
+alertcondition(longSig,   "Long Entry",  "LONG — MACD crossed above signal above EMA 50")
+alertcondition(shortSig,  "Short Entry", "SHORT — MACD crossed below signal below EMA 50")
+alertcondition(exitLong,  "Exit Long",   "EXIT long position")
+alertcondition(exitShort, "Exit Short",  "EXIT short position")
+
+// ── Chart: Trend EMA + live SL/TP lines ──────────────────────────────────────
 plot(trendEMA, "Trend EMA 50", color.new(color.purple, 0), linewidth=2)
-plot(inLong  ? longSL  : na, "Long SL",  color.new(color.red,   0), linewidth=1, style=plot.style_linebr)
-plot(inLong  ? longTP  : na, "Long TP",  color.new(color.lime,  0), linewidth=1, style=plot.style_linebr)
-plot(inShort ? shortSL : na, "Short SL", color.new(color.red,   0), linewidth=1, style=plot.style_linebr)
-plot(inShort ? shortTP : na, "Short TP", color.new(color.lime,  0), linewidth=1, style=plot.style_linebr)
+plot(inLong  ? longSL  : na, "Long SL",  color.new(color.red,  0), linewidth=1, style=plot.style_linebr)
+plot(inLong  ? longTP  : na, "Long TP",  color.new(color.lime, 0), linewidth=1, style=plot.style_linebr)
+plot(inShort ? shortSL : na, "Short SL", color.new(color.red,  0), linewidth=1, style=plot.style_linebr)
+plot(inShort ? shortTP : na, "Short TP", color.new(color.lime, 0), linewidth=1, style=plot.style_linebr)
 
-// ── Entry / Exit Markers ──────────────────────────────────────────────────────
-plotshape(longSig,   title="Long Entry",  style=shape.triangleup,   location=location.belowbar, color=color.new(color.green, 0), size=size.small)
-plotshape(shortSig,  title="Short Entry", style=shape.triangledown, location=location.abovebar, color=color.new(color.red,   0), size=size.small)
-plotshape(exitLong,  title="Exit Long",   style=shape.xcross,       location=location.abovebar, color=color.new(color.yellow, 0), size=size.tiny)
-plotshape(exitShort, title="Exit Short",  style=shape.xcross,       location=location.belowbar, color=color.new(color.yellow, 0), size=size.tiny)
+// ── Entry Arrows ──────────────────────────────────────────────────────────────
+plotshape(longSig,  title="Long Entry",  style=shape.triangleup,   location=location.belowbar, color=color.new(color.green, 0), size=size.small)
+plotshape(shortSig, title="Short Entry", style=shape.triangledown, location=location.abovebar, color=color.new(color.red,   0), size=size.small)
+
+// ── Exit Circles: green = win (TP), red = loss (SL) ──────────────────────────
+plotshape(exitLong  and     isWin, title="Long Win Exit",   style=shape.circle, location=location.abovebar, color=color.new(color.lime, 0), size=size.normal)
+plotshape(exitLong  and not isWin, title="Long Loss Exit",  style=shape.circle, location=location.abovebar, color=color.new(color.red,  0), size=size.normal)
+plotshape(exitShort and     isWin, title="Short Win Exit",  style=shape.circle, location=location.belowbar, color=color.new(color.lime, 0), size=size.normal)
+plotshape(exitShort and not isWin, title="Short Loss Exit", style=shape.circle, location=location.belowbar, color=color.new(color.red,  0), size=size.normal)
+
+// ── Exit Labels: floating P&L amount ─────────────────────────────────────────
+if exitLong
+    pnl      = strategy.closedtrades.profit(strategy.closedtrades - 1)
+    lbl      = (pnl >= 0 ? "✓  +" : "✗  ") + str.tostring(pnl, "#.##")
+    lblColor = pnl >= 0 ? color.new(color.lime, 10) : color.new(color.red, 10)
+    label.new(bar_index, high + atrVal * 0.5, lbl, color=lblColor, textcolor=color.white, style=label.style_label_down, size=size.small)
+
+if exitShort
+    pnl      = strategy.closedtrades.profit(strategy.closedtrades - 1)
+    lbl      = (pnl >= 0 ? "✓  +" : "✗  ") + str.tostring(pnl, "#.##")
+    lblColor = pnl >= 0 ? color.new(color.lime, 10) : color.new(color.red, 10)
+    label.new(bar_index, low - atrVal * 0.5, lbl, color=lblColor, textcolor=color.white, style=label.style_label_up, size=size.small)
 
 // ── Background Tint ───────────────────────────────────────────────────────────
 bgcolor(inLong  ? color.new(color.green, 90) : na, title="Long Background")
