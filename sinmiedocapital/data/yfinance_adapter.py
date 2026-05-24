@@ -512,6 +512,9 @@ def _fetch_news() -> list:
 # ---------------------------------------------------------------------------
 
 def get_yfinance_data() -> dict:
+    from data.mock_data import get_mock_data
+    _mock = get_mock_data()
+
     errors = []
     contracts = {}
 
@@ -523,6 +526,7 @@ def get_yfinance_data() -> dict:
             contracts[disp_sym] = _fetch_contract(yf_sym, disp_sym, disp_name)
         except Exception as e:
             errors.append(f"{disp_sym}: {e}")
+            contracts[disp_sym] = _mock["contracts"][disp_sym]
 
     try:
         macro = _fetch_macro()
