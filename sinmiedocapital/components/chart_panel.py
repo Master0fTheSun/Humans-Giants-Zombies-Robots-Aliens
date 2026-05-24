@@ -271,7 +271,22 @@ def render_chart_panel(symbol: str, height: int = 520):
             st.session_state[tool_key] = None
             st.rerun()
 
-    # ── Inline tool form (appears between toolbar and chart) ───────────────
+    # ── Load data early (needed to pre-populate form defaults) ────────────
+    interval = st.session_state[iv_key]
+    intraday = interval in ("5m", "15m", "30m", "1h")
+
+    with st.spinner(f"Loading {symbol}…"):
+        df = _download(ticker, _PERIOD_MAP[interval], interval)
+
+    if df.empty:
+        st.warning(f"No data for {symbol}. Market may be closed.")
+        return
+
+    _chart_high  = round(float(df["High"].max()), 2)
+    _chart_low   = round(float(df["Low"].min()),  2)
+    _last_price  = round(float(df["Close"].iloc[-1]), 2)
+
+    # ── Inline tool form / hint ────────────────────────────────────────────
     active_tool = st.session_state[tool_key]
 
     if active_tool == "fib":
@@ -279,16 +294,16 @@ def render_chart_panel(symbol: str, height: int = 520):
             '<div style="background:#f0f4ff;border-left:3px solid #3498db;'
             'padding:6px 10px;border-radius:0 4px 4px 0;margin:4px 0;">'
             '<span style="color:#3498db;font-size:0.8em;font-weight:600;">'
-            '📐 Fibonacci Retracement — enter swing high & low</span></div>',
+            '📐 Fibonacci Retracement — adjust the pre-filled range or type custom prices</span></div>',
             unsafe_allow_html=True)
         _fg = st.session_state[f"fi_gen_{symbol}"]
         fc = st.columns([2, 2, 1.5, 3])
         with fc[0]:
-            fh = st.number_input("Swing High", value=0.00, format="%.2f",
+            fh = st.number_input("Swing High", value=_chart_high, format="%.2f",
                                  step=0.01, key=f"fi_h_{symbol}_{_fg}",
                                  help="Top of the retracement range (swing high)")
         with fc[1]:
-            fl = st.number_input("Swing Low", value=0.00, format="%.2f",
+            fl = st.number_input("Swing Low", value=_chart_low, format="%.2f",
                                  step=0.01, key=f"fi_l_{symbol}_{_fg}",
                                  help="Bottom of the retracement range (swing low)")
         with fc[2]:
@@ -309,7 +324,7 @@ def render_chart_panel(symbol: str, height: int = 520):
             '<div style="background:#f0f4ff;border-left:3px solid #2ecc71;'
             'padding:6px 10px;border-radius:0 4px 4px 0;margin:4px 0;">'
             '<span style="color:#2ecc71;font-size:0.8em;font-weight:600;">'
-            '📊 Position — entry / stop / target</span></div>',
+            '📊 Position — entry pre-filled from last price, set your stop & target</span></div>',
             unsafe_allow_html=True)
         _pg = st.session_state[f"po_gen_{symbol}"]
         pc = st.columns([1, 1.4, 1.4, 1.4, 1])
@@ -317,7 +332,7 @@ def render_chart_panel(symbol: str, height: int = 520):
             pd_ = st.selectbox("Direction", ["Long", "Short"],
                                key=f"po_d_{symbol}_{_pg}")
         with pc[1]:
-            pe = st.number_input("Entry", value=0.00, format="%.2f",
+            pe = st.number_input("Entry", value=_last_price, format="%.2f",
                                  step=0.01, key=f"po_e_{symbol}_{_pg}",
                                  help="Your planned entry price")
         with pc[2]:
@@ -358,51 +373,12 @@ def render_chart_panel(symbol: str, height: int = 520):
             '<div style="background:#f0f4ff;border-left:3px solid #f1c40f;'
             'padding:6px 10px;border-radius:0 4px 4px 0;margin:4px 0;">'
             '<span style="color:#b7960a;font-size:0.8em;font-weight:600;">'
-            '📏 Trend Line — two price levels (check Horizontal to lock flat)</span></div>',
+            '📏 Trend Line active — click and drag directly on the chart to draw. '
+            'Use the hand ✋ in the chart toolbar to switch back to pan mode. '
+            'Erase with the ✕ eraser tool.</span></div>',
             unsafe_allow_html=True)
-        _tg = st.session_state[f"tl_gen_{symbol}"]
-        tc = st.columns([1.4, 1.4, 1.4, 1.2, 1])
-        with tc[0]:
-            tp1 = st.number_input("Price 1", value=0.00, format="%.2f",
-                                  step=0.01, key=f"tl_p1_{symbol}_{_tg}",
-                                  help="Left anchor price (start of line)")
-        with tc[1]:
-            tp2 = st.number_input("Price 2", value=0.00, format="%.2f",
-                                  step=0.01, key=f"tl_p2_{symbol}_{_tg}",
-                                  help="Right anchor price (end of line) — not needed if Horizontal")
-        with tc[2]:
-            tcolor = st.selectbox("Color", list(_COLOR_MAP.keys()),
-                                  key=f"tl_c_{symbol}_{_tg}")
-        with tc[3]:
-            th = st.checkbox("Horizontal ⇧", key=f"tl_h_{symbol}_{_tg}",
-                             help="Lock line flat — only Price 1 needed")
-        with tc[4]:
-            st.write("")
-            if st.button("✓ Add", key=f"tl_add_{symbol}",
-                         use_container_width=True):
-                valid = tp1 > 0 and (th or tp2 > 0)
-                if valid:
-                    st.session_state[f"trendlines_{symbol}"].append({
-                        "price1": tp1, "price2": tp2,
-                        "horizontal": th,
-                        "color": _COLOR_MAP[tcolor],
-                    })
-                    st.session_state[f"tl_gen_{symbol}"] += 1
-                    st.session_state[tool_key] = None
-                    st.rerun()
-                else:
-                    st.toast("Enter Price 1 and Price 2 (or check Horizontal for a flat line).", icon="⚠️")
 
-    # ── Load data ──────────────────────────────────────────────────────────
-    interval = st.session_state[iv_key]
-    intraday = interval in ("5m", "15m", "30m", "1h")
-
-    with st.spinner(f"Loading {symbol}…"):
-        df = _download(ticker, _PERIOD_MAP[interval], interval)
-
-    if df.empty:
-        st.warning(f"No data for {symbol}. Market may be closed.")
-        return
+    # ── Build chart ────────────────────────────────────────────────────────
 
     x0, x1 = df.index[0], df.index[-1]
     fig = go.Figure()
@@ -433,12 +409,15 @@ def render_chart_panel(symbol: str, height: int = 520):
             line=dict(color="#f39c12", width=1.4, dash="dot"),
         ))
 
+    drag_mode = "drawline" if active_tool == "tl" else "pan"
+
     fig.update_layout(
         height=height,
         margin=dict(l=0, r=0, t=10, b=0),
         paper_bgcolor="#f5f8ff",
         plot_bgcolor="#ffffff",
         font=dict(color="#0a1428", size=11),
+        dragmode=drag_mode,
         xaxis=dict(
             gridcolor="#e8eef8", showgrid=True,
             rangeslider=dict(visible=False), type="date",
