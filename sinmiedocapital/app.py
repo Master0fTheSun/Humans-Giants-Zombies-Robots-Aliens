@@ -119,6 +119,7 @@ st.markdown(
 )
 
 # --- Imports after page config ---
+import time
 import config
 from data.data_adapter import get_dashboard_data
 from components.contract_card import render_contract_card
@@ -132,11 +133,23 @@ from components.pre_session_checklist import render_pre_session_checklist
 from utils.helpers import risk_badge
 
 # ---------------------------------------------------------------------------
-# Load data
+# Auto-refresh (live mode only)
 # ---------------------------------------------------------------------------
 
-if "data" not in st.session_state:
-    st.session_state.data = get_dashboard_data()
+if config.DATA_MODE == "live":
+    from streamlit_autorefresh import st_autorefresh
+    st_autorefresh(interval=config.REFRESH_INTERVAL * 1000, key="data_autorefresh")
+
+# ---------------------------------------------------------------------------
+# Load data — time-based staleness so auto-refresh actually re-fetches
+# ---------------------------------------------------------------------------
+
+_now   = time.time()
+_stale = (_now - st.session_state.get("_data_fetched_at", 0)) >= config.REFRESH_INTERVAL
+
+if "data" not in st.session_state or _stale:
+    st.session_state.data          = get_dashboard_data()
+    st.session_state["_data_fetched_at"] = _now
 
 data = st.session_state.data
 
@@ -155,9 +168,13 @@ with hcol1:
         unsafe_allow_html=True,
     )
 with hcol2:
+    _elapsed   = int(time.time() - st.session_state.get("_data_fetched_at", time.time()))
+    _remaining = max(0, config.REFRESH_INTERVAL - _elapsed)
+    _refresh_note = (f"· refreshes in {_remaining}s" if config.DATA_MODE == "live" else "")
     st.markdown(
         f'<div style="padding-top:8px;color:#636e72;font-size:0.8em;text-align:right;">'
         f'Last updated<br>{data["timestamp"]}'
+        f'<br><span style="font-size:0.9em;color:#95a5a6;">{_refresh_note}</span>'
         f'</div>',
         unsafe_allow_html=True,
     )
@@ -165,6 +182,7 @@ with hcol3:
     st.markdown('<div style="padding-top:14px;">', unsafe_allow_html=True)
     if st.button("Refresh", key="refresh_btn"):
         st.session_state.data = get_dashboard_data()
+        st.session_state["_data_fetched_at"] = time.time()
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
