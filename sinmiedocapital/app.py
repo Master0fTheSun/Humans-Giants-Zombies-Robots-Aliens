@@ -137,8 +137,11 @@ from utils.helpers import risk_badge
 # ---------------------------------------------------------------------------
 
 if config.DATA_MODE == "live":
-    from streamlit_autorefresh import st_autorefresh
-    st_autorefresh(interval=config.REFRESH_INTERVAL * 1000, key="data_autorefresh")
+    try:
+        from streamlit_autorefresh import st_autorefresh
+        st_autorefresh(interval=config.REFRESH_INTERVAL * 1000, key="data_autorefresh")
+    except ImportError:
+        pass  # package not yet installed — manual refresh only
 
 # ---------------------------------------------------------------------------
 # Load data — time-based staleness so auto-refresh actually re-fetches

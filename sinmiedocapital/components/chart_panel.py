@@ -596,7 +596,7 @@ def render_chart_panel(symbol: str, height: int = 520):
                 st.session_state[f"ev_nonce_{symbol}"] += 1
                 st.rerun()
             elif click_step == 1:
-                p1_y = click_p1["y"]
+                p1_y = float(click_p1.get("y", clicked_y)) if click_p1 else clicked_y
                 high = max(p1_y, clicked_y)
                 low  = min(p1_y, clicked_y)
                 if high != low:
@@ -622,7 +622,7 @@ def render_chart_panel(symbol: str, height: int = 520):
                 st.session_state[f"ev_nonce_{symbol}"] += 1
                 st.rerun()
             elif click_step == 1:
-                p1_y = click_p1["y"]
+                p1_y = float(click_p1.get("y", clicked_y)) if click_p1 else clicked_y
                 st.session_state[f"trendlines_{symbol}"].append({
                     "price1":     p1_y,
                     "price2":     clicked_y,

@@ -13,15 +13,15 @@ def render_macro_panel(macro: dict):
     # Top metrics strip
     m1, m2, m3, m4, m5 = st.columns(5)
 
-    vix = macro["vix"]
-    vix_ch = macro["vix_change"]
+    vix = macro.get("vix", 0) or 0
+    vix_ch = macro.get("vix_change", 0) or 0
     vix_color = "#e74c3c" if vix > 20 else "#f39c12" if vix > 15 else "#2ecc71"
 
-    yield_val = macro["ten_year_yield"]
-    yield_ch = macro["ten_year_change"]
+    yield_val = macro.get("ten_year_yield", 0) or 0
+    yield_ch = macro.get("ten_year_change", 0) or 0
 
-    dxy = macro["dollar_index"]
-    dxy_ch = macro["dollar_change"]
+    dxy = macro.get("dollar_index", 0) or 0
+    dxy_ch = macro.get("dollar_change", 0) or 0
 
     with m1:
         st.markdown("**VIX**")
