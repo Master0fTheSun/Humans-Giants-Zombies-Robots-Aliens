@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Entrepreneur Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header>
+      <div class="header-left">
+        <span class="logo">⚡ Dashboard</span>
+        <span id="month-label" class="month-label"></span>
+      </div>
+      <nav>
+        <button class="tab-btn active" data-tab="overview">Overview</button>
+        <button class="tab-btn" data-tab="clients">Clients</button>
+        <button class="tab-btn" data-tab="services">Services</button>
+        <button class="tab-btn" data-tab="content">Content</button>
+      </nav>
+    </header>
+
+    <main>
+      <!-- OVERVIEW -->
+      <section id="tab-overview" class="tab-section active">
+        <div class="section-header">
+          <h2>Monthly Revenue</h2>
+          <div class="header-actions">
+            <span class="hint">Click any amount to update</span>
+          </div>
+        </div>
+        <div id="revenue-overview"></div>
+      </section>
+
+      <!-- CLIENTS -->
+      <section id="tab-clients" class="tab-section">
+        <div class="section-header">
+          <h2>Client Pipeline</h2>
+          <button class="btn btn-primary" id="add-client-btn">+ Add Client</button>
+        </div>
+        <div id="pipeline-stats" class="pipeline-stats"></div>
+        <div id="clients-table"></div>
+      </section>
+
+      <!-- SERVICES -->
+      <section id="tab-services" class="tab-section">
+        <div class="section-header">
+          <h2>Services & Pricing</h2>
+          <button class="btn btn-primary" id="add-service-btn">+ Add Service</button>
+        </div>
+        <div id="services-grid"></div>
+      </section>
+
+      <!-- CONTENT -->
+      <section id="tab-content" class="tab-section">
+        <div class="section-header">
+          <h2>Content Calendar</h2>
+          <button class="btn btn-primary" id="add-post-btn">+ New Post</button>
+        </div>
+        <div id="content-filters" class="filter-bar"></div>
+        <div id="content-table"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Modal -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div id="modal" class="modal">
+      <div class="modal-header">
+        <h3 id="modal-title"></h3>
+        <button id="modal-close" class="modal-close">×</button>
+      </div>
+      <div id="modal-body" class="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
