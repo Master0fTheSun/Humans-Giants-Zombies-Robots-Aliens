@@ -1,0 +1,209 @@
+//@version=6
+indicator("Volume Architecture [Venice]",
+     overlay=true,
+     max_boxes_count=50,
+     max_labels_count=50,
+     max_bars_back=500)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+grpSession = "Session Profile"
+atrLen   = input.int(14,    "VWAP Band ATR Length", minval=1, maxval=50,  group=grpSession)
+showVwap = input.bool(true, "Show VWAP Bands",                            group=grpSession)
+showPoc  = input.bool(true, "Show Session POC",                           group=grpSession)
+
+grpVob = "Volume Order Blocks"
+rvolThresh = input.float(2.0, "RVOL Threshold",     minval=1.0, step=0.1, group=grpVob)
+minBodyPct = input.int(60,    "Min Body Ratio (%)", minval=10, maxval=90,  group=grpVob)
+maxVolOBs  = input.int(5,     "Max Vol OBs Shown",  minval=1, maxval=20,   group=grpVob)
+showVolOBs = input.bool(true, "Show Vol OB Zones",                         group=grpVob)
+
+grpAbsorb = "Absorption"
+absorbPct  = input.int(30,    "Absorption Body Ratio (%)", minval=5, maxval=50, group=grpAbsorb)
+showAbsorb = input.bool(true, "Show Absorption Labels",                        group=grpAbsorb)
+
+grpVacuum = "Vacuum Zones"
+showVacuum = input.bool(true, "Show Vacuum Zones (low RVOL tint)", group=grpVacuum)
+
+grpSig = "Signals"
+cooldown = input.int(3, "Signal Cooldown (bars)", minval=1, maxval=20, group=grpSig)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COLORS
+// ─────────────────────────────────────────────────────────────────────────────
+
+colBull    = #089981
+colBear    = #f23645
+colVolBull = color.new(#089981, 75)
+colVolBear = color.new(#f23645, 75)
+colTeal1   = color.new(#00bcd4, 82)
+colTeal2   = color.new(#00bcd4, 93)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SESSION VWAP  (anchored to session open, resets each new day)
+// ─────────────────────────────────────────────────────────────────────────────
+
+isNewSession = timeframe.change("D")
+
+var float cumVP = 0.0
+var float cumV  = 0.0
+
+hlc3Val = (high + low + close) / 3.0
+
+if isNewSession or barstate.isfirst
+    cumVP := hlc3Val * volume
+    cumV  := volume
+else
+    cumVP += hlc3Val * volume
+    cumV  += volume
+
+vwapVal = cumVP / cumV
+atrVal  = ta.atr(atrLen)
+
+vwapH1 = vwapVal + atrVal
+vwapL1 = vwapVal - atrVal
+vwapH2 = vwapVal + 2.0 * atrVal
+vwapL2 = vwapVal - 2.0 * atrVal
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SESSION POC  (price of the highest-volume bar this session)
+// ─────────────────────────────────────────────────────────────────────────────
+
+var float pocPrice   = na
+var float maxVolSess = 0.0
+
+if isNewSession or barstate.isfirst
+    pocPrice   := close
+    maxVolSess := volume
+else if volume > maxVolSess
+    maxVolSess := volume
+    pocPrice   := close
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VOLUME METRICS
+// ─────────────────────────────────────────────────────────────────────────────
+
+avgVol    = ta.sma(volume, 20)
+rvol      = volume / avgVol
+barBody   = math.abs(close - open)
+barRng    = high - low
+bodyRatio = barRng > 0.0 ? barBody / barRng : 0.0
+
+isHighVol    = rvol >= rvolThresh
+isBullCandle = close > open
+isBearCandle = close < open
+isStrongBody = bodyRatio >= minBodyPct / 100.0
+isWeakBody   = bodyRatio <= absorbPct  / 100.0
+
+bullVolOB  = isHighVol and isBullCandle and isStrongBody
+bearVolOB  = isHighVol and isBearCandle and isStrongBody
+absorption = isHighVol and isWeakBody
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VOLUME ORDER BLOCK ARRAYS
+// ─────────────────────────────────────────────────────────────────────────────
+
+var float[] vobTop  = array.new_float(0)
+var float[] vobBot  = array.new_float(0)
+var int[]   vobBar  = array.new_int(0)
+var bool[]  vobBull = array.new_bool(0)
+
+if bullVolOB
+    array.unshift(vobTop,  high)
+    array.unshift(vobBot,  open)
+    array.unshift(vobBar,  bar_index)
+    array.unshift(vobBull, true)
+    if array.size(vobTop) > maxVolOBs
+        array.pop(vobTop)
+        array.pop(vobBot)
+        array.pop(vobBar)
+        array.pop(vobBull)
+
+if bearVolOB
+    array.unshift(vobTop,  open)
+    array.unshift(vobBot,  low)
+    array.unshift(vobBar,  bar_index)
+    array.unshift(vobBull, false)
+    if array.size(vobTop) > maxVolOBs
+        array.pop(vobTop)
+        array.pop(vobBot)
+        array.pop(vobBar)
+        array.pop(vobBull)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SIGNALS  (fires on Vol OB formation bar when VWAP context agrees)
+// ─────────────────────────────────────────────────────────────────────────────
+
+volBuy  = bullVolOB and close > vwapVal
+volSell = bearVolOB and close < vwapVal
+
+var int lastVolSig = -999
+
+validVolBuy  = volBuy  and (bar_index - lastVolSig > cooldown)
+validVolSell = volSell and (bar_index - lastVolSig > cooldown)
+
+if validVolBuy or validVolSell
+    lastVolSig := bar_index
+
+plotshape(validVolBuy,  "VOL BUY",  shape.triangleup,   location.belowbar, colBull, size=size.tiny, text="VOL ▲")
+plotshape(validVolSell, "VOL SELL", shape.triangledown,  location.abovebar, colBear, size=size.tiny, text="VOL ▼")
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ABSORPTION LABELS
+// ─────────────────────────────────────────────────────────────────────────────
+
+var label[] absLbls = array.new<label>(0)
+
+if showAbsorb and absorption
+    absAboveVwap = close > vwapVal
+    absYloc      = absAboveVwap ? high : low
+    absStyle     = absAboveVwap ? label.style_label_down : label.style_label_up
+    absText      = absAboveVwap ? "ABS ▼" : "ABS ▲"
+    array.push(absLbls, label.new(bar_index, absYloc, absText,
+         style=absStyle, color=color.new(color.orange, 35),
+         textcolor=color.white, size=size.tiny))
+    if array.size(absLbls) > 20
+        label.delete(array.shift(absLbls))
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VACUUM ZONES  (low-RVOL areas — price moves fast through these)
+// ─────────────────────────────────────────────────────────────────────────────
+
+isVacuum = rvol < 0.5
+bgcolor(showVacuum and isVacuum ? color.new(color.gray, 94) : na, title="Vacuum Zone")
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VOL OB BOXES
+// ─────────────────────────────────────────────────────────────────────────────
+
+var box[] vobBoxes = array.new<box>(0)
+
+if showVolOBs
+    for b in vobBoxes
+        box.delete(b)
+    array.clear(vobBoxes)
+    if array.size(vobTop) > 0
+        for i = 0 to array.size(vobTop) - 1
+            isBull = array.get(vobBull, i)
+            bgCol  = isBull ? colVolBull : colVolBear
+            brdCol = isBull ? colBull    : colBear
+            newBox = box.new(array.get(vobBar, i), array.get(vobTop, i),
+                 bar_index, array.get(vobBot, i),
+                 bgcolor=bgCol, border_color=brdCol, border_width=1)
+            array.push(vobBoxes, newBox)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VWAP + BANDS + POC PLOTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+p_vwap = plot(showVwap ? vwapVal : na, "VWAP",    color.white, 2, plot.style_line)
+p_h1   = plot(showVwap ? vwapH1  : na, "+1 ATR",  colTeal1,    1, plot.style_line)
+p_l1   = plot(showVwap ? vwapL1  : na, "−1 ATR",  colTeal1,    1, plot.style_line)
+p_h2   = plot(showVwap ? vwapH2  : na, "+2 ATR",  colTeal2,    1, plot.style_line)
+p_l2   = plot(showVwap ? vwapL2  : na, "−2 ATR",  colTeal2,    1, plot.style_line)
+
+fill(p_h1, p_l1, showVwap ? color.new(#00bcd4, 96) : na, "VWAP Inner Band")
+
+plot(showPoc ? pocPrice : na, "Session POC", color.orange, 1, plot.style_stepline)
