@@ -1,0 +1,217 @@
+//@version=6
+indicator("SMC Venice [Scalper]",
+     overlay=true,
+     max_boxes_count=100,
+     max_labels_count=50,
+     max_bars_back=500)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+grpHTF = "HTF Bias"
+htfTf     = input.timeframe("60",  "HTF Timeframe",       group=grpHTF)
+htfEmaLen = input.int(50,          "HTF EMA Length",      minval=1, maxval=200, group=grpHTF)
+showBias  = input.bool(true,       "Show HTF Bias Label", group=grpHTF)
+
+grpStruct = "Market Structure"
+structLen  = input.int(5,    "Pivot Lookback",      minval=2, maxval=20, group=grpStruct)
+showStruct = input.bool(true, "Show BOS / CHoCH",  group=grpStruct)
+
+grpFvg = "Fair Value Gaps"
+fvgMinPct = input.float(0.05, "Min FVG Size (%)", minval=0.01, step=0.01, group=grpFvg)
+maxFvgs   = input.int(5,       "Max FVGs Shown",   minval=1, maxval=20,   group=grpFvg)
+showFvgs  = input.bool(true,   "Show FVG Zones",   group=grpFvg)
+
+grpSig = "Signals"
+cooldown = input.int(3, "Signal Cooldown (bars)", minval=1, maxval=20, group=grpSig)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COLORS
+// ─────────────────────────────────────────────────────────────────────────────
+
+colBull    = #089981
+colBear    = #f23645
+colFvgBull = color.new(#089981, 88)
+colFvgBear = color.new(#f23645, 88)
+colFvgMit  = color.new(color.gray, 95)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HTF BIAS
+// ─────────────────────────────────────────────────────────────────────────────
+
+[htfClose, htfEmaVal] = request.security(syminfo.tickerid, htfTf,
+     [close, ta.ema(close, htfEmaLen)],
+     lookahead=barmerge.lookahead_off)
+
+htfBull = htfClose > htfEmaVal
+htfBear = htfClose < htfEmaVal
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MARKET STRUCTURE
+// ─────────────────────────────────────────────────────────────────────────────
+
+pivHigh = ta.pivothigh(high, structLen, structLen)
+pivLow  = ta.pivotlow(low,  structLen, structLen)
+
+var float swingHigh = na
+var float swingLow  = na
+var string mktStr   = "neutral"
+
+if not na(pivHigh)
+    swingHigh := pivHigh
+if not na(pivLow)
+    swingLow := pivLow
+
+bosBull   = not na(swingHigh) and close > swingHigh and mktStr == "bullish"
+chochBull = not na(swingHigh) and close > swingHigh and mktStr == "bearish"
+bosBear   = not na(swingLow)  and close < swingLow  and mktStr == "bearish"
+chochBear = not na(swingLow)  and close < swingLow  and mktStr == "bullish"
+
+if chochBull or bosBull
+    mktStr := "bullish"
+if chochBear or bosBear
+    mktStr := "bearish"
+
+// Structure labels — cap at 20, oldest pruned first
+var label[] structLbls = array.new<label>(0)
+
+if showStruct
+    if bosBull
+        array.push(structLbls, label.new(bar_index, swingHigh, "BOS",
+             style=label.style_label_down, color=color.new(color.gray, 55),
+             textcolor=color.white, size=size.tiny))
+        if array.size(structLbls) > 20
+            label.delete(array.shift(structLbls))
+    if chochBull
+        array.push(structLbls, label.new(bar_index, swingHigh, "CHoCH",
+             style=label.style_label_down, color=color.new(colBull, 30),
+             textcolor=color.white, size=size.tiny))
+        if array.size(structLbls) > 20
+            label.delete(array.shift(structLbls))
+    if bosBear
+        array.push(structLbls, label.new(bar_index, swingLow, "BOS",
+             style=label.style_label_up, color=color.new(color.gray, 55),
+             textcolor=color.white, size=size.tiny))
+        if array.size(structLbls) > 20
+            label.delete(array.shift(structLbls))
+    if chochBear
+        array.push(structLbls, label.new(bar_index, swingLow, "CHoCH",
+             style=label.style_label_up, color=color.new(colBear, 30),
+             textcolor=color.white, size=size.tiny))
+        if array.size(structLbls) > 20
+            label.delete(array.shift(structLbls))
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FAIR VALUE GAPS
+// ─────────────────────────────────────────────────────────────────────────────
+
+var float[] fvgTop  = array.new_float(0)
+var float[] fvgBot  = array.new_float(0)
+var int[]   fvgBar  = array.new_int(0)
+var bool[]  fvgBull = array.new_bool(0)
+var bool[]  fvgMit  = array.new_bool(0)
+
+// Three-candle gap patterns
+newBullFvg = low > high[2] and (low - high[2]) / close >= fvgMinPct / 100.0
+newBearFvg = high < low[2] and (low[2] - high) / close >= fvgMinPct / 100.0
+
+if newBullFvg
+    array.unshift(fvgTop,  low)
+    array.unshift(fvgBot,  high[2])
+    array.unshift(fvgBar,  bar_index[1])
+    array.unshift(fvgBull, true)
+    array.unshift(fvgMit,  false)
+    if array.size(fvgTop) > maxFvgs
+        array.pop(fvgTop)
+        array.pop(fvgBot)
+        array.pop(fvgBar)
+        array.pop(fvgBull)
+        array.pop(fvgMit)
+
+if newBearFvg
+    array.unshift(fvgTop,  low[2])
+    array.unshift(fvgBot,  high)
+    array.unshift(fvgBar,  bar_index[1])
+    array.unshift(fvgBull, false)
+    array.unshift(fvgMit,  false)
+    if array.size(fvgTop) > maxFvgs
+        array.pop(fvgTop)
+        array.pop(fvgBot)
+        array.pop(fvgBar)
+        array.pop(fvgBull)
+        array.pop(fvgMit)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SIGNALS  (evaluated before mitigation update so first tap always fires)
+// ─────────────────────────────────────────────────────────────────────────────
+
+inBullFvg = false
+inBearFvg = false
+
+if array.size(fvgTop) > 0
+    for i = 0 to array.size(fvgTop) - 1
+        if not array.get(fvgMit, i)
+            topV = array.get(fvgTop, i)
+            botV = array.get(fvgBot, i)
+            if array.get(fvgBull, i) and close >= botV and close <= topV
+                inBullFvg := true
+            if not array.get(fvgBull, i) and close >= botV and close <= topV
+                inBearFvg := true
+
+buyRaw  = inBullFvg and htfBull and mktStr == "bullish"
+sellRaw = inBearFvg and htfBear and mktStr == "bearish"
+
+var int lastSig = -999
+
+validBuy  = buyRaw  and (bar_index - lastSig > cooldown)
+validSell = sellRaw and (bar_index - lastSig > cooldown)
+
+if validBuy or validSell
+    lastSig := bar_index
+
+plotshape(validBuy,  "BUY",  shape.triangleup,   location.belowbar, colBull, size=size.small, text="BUY")
+plotshape(validSell, "SELL", shape.triangledown,  location.abovebar, colBear, size=size.small, text="SELL")
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MITIGATION UPDATE  (after signal check — zones used once then faded)
+// ─────────────────────────────────────────────────────────────────────────────
+
+if array.size(fvgTop) > 0
+    for i = 0 to array.size(fvgTop) - 1
+        if not array.get(fvgMit, i)
+            if close >= array.get(fvgBot, i) and close <= array.get(fvgTop, i)
+                array.set(fvgMit, i, true)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FVG BOXES
+// ─────────────────────────────────────────────────────────────────────────────
+
+var box[] fvgBoxes = array.new<box>(0)
+
+if showFvgs
+    for b in fvgBoxes
+        box.delete(b)
+    array.clear(fvgBoxes)
+    if array.size(fvgTop) > 0
+        for i = 0 to array.size(fvgTop) - 1
+            isMit  = array.get(fvgMit, i)
+            isBull = array.get(fvgBull, i)
+            bgCol  = isMit ? colFvgMit : isBull ? colFvgBull : colFvgBear
+            brdCol = isMit ? color.new(color.gray, 80) : isBull ? colBull : colBear
+            newBox = box.new(array.get(fvgBar, i), array.get(fvgTop, i),
+                 bar_index, array.get(fvgBot, i),
+                 bgcolor=bgCol, border_color=brdCol, border_width=1)
+            array.push(fvgBoxes, newBox)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HTF BIAS LABEL
+// ─────────────────────────────────────────────────────────────────────────────
+
+var table biasLbl = table.new(position.top_right, 1, 1,
+     bgcolor=color.new(color.black, 75), border_width=1)
+
+if showBias and barstate.islast
+    txt = htfBull ? "HTF  BULL  ▲" : htfBear ? "HTF  BEAR  ▼" : "HTF  NEUTRAL"
+    col = htfBull ? colBull : htfBear ? colBear : color.gray
+    table.cell(biasLbl, 0, 0, txt, text_color=col, text_size=size.small)
