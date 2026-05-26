@@ -105,7 +105,7 @@ def render_tutorial():
             "| **Change / %** | How much the price moved since yesterday's close |\n"
             "| **Gap Up / Gap Down** | When the market opens significantly higher or lower than where it closed |\n"
             "| **ATR (14)** | Average True Range — the average daily price swing over the last 14 days. Bigger ATR = more volatile. |\n"
-            "| **VWAP** | Volume Weighted Average Price — the average price weighted by trading volume. Traders watch whether price is above or below VWAP as a trend signal. |\n"
+            "| **VWAP** | Volume Weighted Average Price — the average price weighted by trading volume. Traders watch whether price is above or below VWAP as a trend signal. VWAP resets at the start of every session. |\n"
             "| **Trend** | Whether price action is Bullish (rising), Bearish (falling), or Neutral |\n"
             "| **Volatility** | Low / Medium / High — how much the price is swinging relative to its ATR |\n"
             "| **Key Levels** | R = Resistance (price levels where selling tends to occur) and S = Support (levels where buying tends to occur) |\n"
@@ -127,11 +127,16 @@ def render_tutorial():
             "| **VWAP** | Orange dotted | Volume-weighted average price for the current session (intraday only) |\n\n"
             "**Timeframes** — buttons above the chart (5m, 15m, 30m, 1h, 1d). "
             "Start with 15m or 1h for a broader view, then zoom into 5m when planning an entry.\n\n"
+            "> **Quick mental model:** Use **1d** to see the bigger picture → **1h or 30m** to spot the trend "
+            "→ **5m** to pick your exact entry. Most beginners only use 5m and miss the context.\n\n"
             "**Drawing tools** (toolbar above the chart):\n"
+            "> **Skill order:** Start with **📏 Trend Line** (mark support/resistance). "
+            "Then **📊 Position** (visualize the trade before taking it). "
+            "Use **📐 Fibonacci** last — it's powerful but takes practice to read.\n\n"
+            "- **📏 Trend Line** — draws a straight line between two price points to show a trend or level.\n"
+            "- **📊 Position** — marks a planned trade with entry, stop loss, and take profit levels on the chart.\n"
             "- **📐 Fibonacci** — draws retracement levels between a swing high and swing low. "
             "Key levels (38.2%, 50%, 61.8%) often act as support/resistance.\n"
-            "- **📊 Position** — marks a planned trade with entry, stop loss, and take profit levels on the chart.\n"
-            "- **📏 Trend Line** — draws a straight line between two price points to show a trend or level.\n"
             "- **🗑 Clear All** — removes all drawings.\n\n"
             "**How to use click-to-draw** (when available):\n"
             "1. Click a drawing tool button\n"
@@ -151,8 +156,9 @@ def render_tutorial():
             "Example: 'Fail to hold VWAP and break below the session low.'\n\n"
             "**Trade Plan** — A specific action based on the bias: entry trigger, stop level.\n\n"
             "**Invalidation Level** — The price at which the thesis is wrong. "
-            "If price crosses this level, the original idea is no longer valid — "
-            "this is where a trade should be closed for a loss to prevent a larger one.\n\n"
+            "When price crosses this level, **exit immediately** — your thesis is wrong. "
+            "This is not a failure, it's risk management. "
+            "The capital you save becomes your next trade.\n\n"
             "**Thesis Consistency Check** — Compare the dashboard's read to your own. "
             "If they conflict, consider reducing position size or waiting for confirmation."
         )
@@ -162,11 +168,16 @@ def render_tutorial():
             "The Risk Tools tab has two key tools every trader should use before placing a trade.\n\n"
             "**R:R Calculator (Risk:Reward)**\n\n"
             "This calculates whether a trade is worth taking before you enter.\n\n"
-            "Example with MCL:\n"
+            "**MCL example:**\n"
             "- Entry: 80.00 · Stop: 79.50 · Target: 81.00\n"
-            "- Risk = 0.50 points × $100/point = **$50** at risk\n"
-            "- Reward = 1.00 point × $100/point = **$100** potential profit\n"
-            "- R:R Ratio = **1 : 2.0** ✓ (2:1 is the minimum recommended)\n\n"
+            "- Risk = 0.50 pts × $100/pt = **$50** at risk\n"
+            "- Reward = 1.00 pt × $100/pt = **$100** potential profit\n"
+            "- R:R = **1 : 2.0** ✓\n\n"
+            "**MES example:**\n"
+            "- Entry: 5320 · Stop: 5315 · Target: 5335\n"
+            "- Risk = 5 pts × $5/pt = **$25** at risk\n"
+            "- Reward = 15 pts × $5/pt = **$75** potential profit\n"
+            "- R:R = **1 : 3.0** ✓✓ (excellent)\n\n"
             "A ratio below 1.5 means the potential reward doesn't justify the risk — "
             "skip the trade and wait for a better setup.\n\n"
             "**Pre-Session Checklist**\n\n"
@@ -175,6 +186,24 @@ def render_tutorial():
             "The progress bar at the top shows how prepared you are. "
             "Aim for 90%+ before placing any trade — "
             "most trading mistakes happen when traders skip preparation."
+        )
+
+    with st.expander("🗒️ Pre-Session Checklist — why each category matters"):
+        st.markdown(
+            "The Pre-Session Checklist (in the Risk Tools tab) is the single most important habit "
+            "you can build as a trader. Here's why each category exists:\n\n"
+            "**Market Context** — Know where price was overnight before you trade. "
+            "If you don't know the overnight high and low, you're trading blind.\n\n"
+            "**Macro & News** — A surprise economic report can move MCL or MES 10× faster than normal. "
+            "Always check the calendar before the session opens — know what's coming.\n\n"
+            "**Thesis & Plan** — If you don't have a written plan, you'll make it up in the moment "
+            "when your emotions are highest. Undisciplined entries are the #1 cause of avoidable losses.\n\n"
+            "**Risk Management** — Decide your maximum loss for the day *before* the market opens. "
+            "Once you're in a losing trade, the number will feel different and you'll be tempted to move your stop.\n\n"
+            "**Mindset** — Tired, angry, or distracted traders lose money faster than a bad setup does. "
+            "If you're not in the right headspace, the best trade is no trade.\n\n"
+            "> **Aim for 90%+ before placing any trade.** The progress bar in the Risk Tools tab "
+            "turns green when you're ready. Most mistakes happen when traders skip this step."
         )
 
     with st.expander("📰 News & Macro tab — market environment"):
@@ -246,7 +275,7 @@ def render_tutorial():
             ("Thesis", "Your written reason for wanting to make a trade. Forces you to think through the idea before risking money."),
             ("Tick", "The smallest price increment a futures contract can move. MCL tick = $0.01 = $1.00 profit/loss. MES tick = 0.25 points = $1.25 profit/loss."),
             ("VIX", "The CBOE Volatility Index — measures expected market volatility over the next 30 days. Often called the 'fear gauge.' High VIX = fearful markets."),
-            ("VWAP (Volume-Weighted Average Price)", "The average price paid for the day, weighted by how much volume traded at each price. A popular reference level — price above VWAP is generally bullish, below is bearish."),
+            ("VWAP (Volume-Weighted Average Price)", "The average price paid for the day, weighted by how much volume traded at each price. Resets to zero at the start of each session. Price above VWAP = generally bullish; below = bearish. Only shown on intraday charts (5m, 15m, 30m, 1h)."),
         ]
 
         rows_html = ""

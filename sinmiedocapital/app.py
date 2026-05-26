@@ -201,11 +201,23 @@ mkt = data.get("market_status", {})
 mkt_label = mkt.get("status", "")
 mkt_color = mkt.get("color", "#95a5a6")
 mkt_note  = mkt.get("note", "")
+
+# Next high-impact economic event
+_events     = data.get("macro", {}).get("economic_events", [])
+_hi_events  = [e for e in _events if e.get("importance") == "High"]
+_next_event = _hi_events[0] if _hi_events else None
+_evt_html   = (
+    f'  &nbsp;|&nbsp;  <span style="color:#f39c12;">⚠️ Next: '
+    f'{_next_event["event"]} at {_next_event["time"]} (HIGH)</span>'
+    if _next_event else ""
+)
+
 st.markdown(
     f'<div style="font-size:0.75em;text-align:right;margin-top:-10px;">'
     f'<span style="color:{mode_color};">● {mode_label}</span>'
     f'{"  &nbsp;|&nbsp;  <span style=color:" + mkt_color + ";> ● " + mkt_label + "</span>" if mkt_label else ""}'
     f'{"  <span style=color:#636e72;font-size:0.9em;> — " + mkt_note + "</span>" if mkt_note else ""}'
+    f'{_evt_html}'
     f'  &nbsp;<span style="color:#95a5a6;">· ⏱ ~15 min delayed</span>'
     f'</div>',
     unsafe_allow_html=True,
@@ -249,6 +261,37 @@ with tab_overview:
 
     with col_mes:
         render_contract_card(mes)
+
+    # Watch at Next Open callout — extracted from thesis for quick Discord sharing
+    _mcl_watch = mcl.get("watch_next_open", "")
+    _mes_watch  = mes.get("watch_next_open", "")
+    if _mcl_watch or _mes_watch:
+        st.markdown("---")
+        w1, w2 = st.columns(2)
+        with w1:
+            if _mcl_watch:
+                st.markdown(
+                    f'<div style="background:#e8f0ff;border-left:4px solid #1e40af;'
+                    f'padding:10px 14px;border-radius:0 6px 6px 0;">'
+                    f'<div style="color:#5577aa;font-size:0.75em;font-weight:600;'
+                    f'margin-bottom:4px;letter-spacing:0.04em;">🎯 MCL — WATCH AT OPEN</div>'
+                    f'<div style="font-size:0.88em;color:#0a1428;line-height:1.5;">'
+                    f'{_mcl_watch}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+        with w2:
+            if _mes_watch:
+                st.markdown(
+                    f'<div style="background:#e8f0ff;border-left:4px solid #1e40af;'
+                    f'padding:10px 14px;border-radius:0 6px 6px 0;">'
+                    f'<div style="color:#5577aa;font-size:0.75em;font-weight:600;'
+                    f'margin-bottom:4px;letter-spacing:0.04em;">🎯 MES — WATCH AT OPEN</div>'
+                    f'<div style="font-size:0.88em;color:#0a1428;line-height:1.5;">'
+                    f'{_mes_watch}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
 
 # ── Tab 2: Charts ────────────────────────────────────────────────────────────
 with tab_charts:
