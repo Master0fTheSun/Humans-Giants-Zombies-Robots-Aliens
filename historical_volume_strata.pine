@@ -1,0 +1,330 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0
+// © Historical Volume Strata [HVS]
+
+//@version=6
+indicator("Historical Volume Strata [HVS]", overlay=true, max_bars_back=5000, max_boxes_count=500, max_lines_count=500, max_labels_count=50)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INPUTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var GRP_GEN   = "⬛ General"
+var GRP_S1    = "🟦 Stratum 1 — Recent"
+var GRP_S2    = "🟨 Stratum 2 — Medium"
+var GRP_S3    = "🟥 Stratum 3 — Long"
+var GRP_INST  = "🏦 Institutional / HTF"
+var GRP_STYLE = "🎨 Style"
+
+i_buckets       = input.int   (50,      "Price Buckets",              minval=10, maxval=100,        group=GRP_GEN)
+i_profile_right = input.int   (5,       "Bars from Right Edge",       minval=0,  maxval=50,         group=GRP_GEN)
+i_profile_width = input.int   (20,      "Profile Width (bars)",       minval=5,  maxval=100,        group=GRP_GEN)
+i_show_poc      = input.bool  (true,    "Show POC Lines",                                           group=GRP_GEN)
+i_show_va       = input.bool  (true,    "Show Value Area (70%)",                                    group=GRP_GEN)
+i_show_labels   = input.bool  (true,    "Show Period Labels",                                       group=GRP_GEN)
+
+i_s1_on         = input.bool  (true,    "Show Stratum 1",                                           group=GRP_S1)
+i_s1_len        = input.int   (20,      "Lookback (bars)",            minval=5,                     group=GRP_S1)
+i_s1_col        = input.color (color.new(#00E5FF, 55), "Color",                                     group=GRP_S1)
+
+i_s2_on         = input.bool  (true,    "Show Stratum 2",                                           group=GRP_S2)
+i_s2_len        = input.int   (63,      "Lookback (bars)",            minval=10,                    group=GRP_S2)
+i_s2_col        = input.color (color.new(#FFD700, 65), "Color",                                     group=GRP_S2)
+
+i_s3_on         = input.bool  (true,    "Show Stratum 3",                                           group=GRP_S3)
+i_s3_len        = input.int   (252,     "Lookback (bars)",            minval=20,                    group=GRP_S3)
+i_s3_col        = input.color (color.new(#FF4C4C, 75), "Color",                                     group=GRP_S3)
+
+i_inst_on       = input.bool  (true,    "Show Institutional Nodes",                                 group=GRP_INST)
+i_htf_tf        = input.timeframe("W",  "HTF Timeframe",                                            group=GRP_INST)
+i_inst_mult     = input.float (2.0,     "Institutional Vol Multiplier", minval=1.1, step=0.1,       group=GRP_INST)
+i_inst_lookback = input.int   (20,      "HTF SMA Length",             minval=5,                     group=GRP_INST)
+i_inst_col      = input.color (color.new(#FF8C00, 30), "Node Color",                                group=GRP_INST)
+i_inst_width    = input.int   (1,       "Node Line Width",            minval=1, maxval=4,            group=GRP_INST)
+
+i_poc_col       = input.color (#FFFFFF, "POC Line Color",                                           group=GRP_STYLE)
+i_poc_width     = input.int   (2,       "POC Line Width",             minval=1, maxval=4,            group=GRP_STYLE)
+i_va_alpha      = input.int   (88,      "Value Area Opacity (0-100)", minval=50, maxval=99,          group=GRP_STYLE)
+i_resonance_col = input.color (color.new(#FF00FF, 20), "Resonance Zone Color",                      group=GRP_STYLE)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HTF INSTITUTIONAL DATA
+// ═══════════════════════════════════════════════════════════════════════════════
+
+[htf_h, htf_l, htf_vol, htf_vol_sma] = request.security(
+     syminfo.tickerid, i_htf_tf,
+     [high, low, volume, ta.sma(volume, i_inst_lookback)],
+     lookahead=barmerge.lookahead_off)
+
+htf_is_institutional = htf_vol > htf_vol_sma * i_inst_mult
+htf_mid              = (htf_h + htf_l) / 2.0
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PROFILE ENGINE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Compute a volume-at-price profile for the last `len` bars.
+// Returns parallel arrays: bucket prices (low edge) and accumulated volume.
+f_build_profile(len, buckets) =>
+    ph = ta.highest(high, len)
+    pl = ta.lowest (low,  len)
+
+    bucket_size = ph == pl ? syminfo.mintick : (ph - pl) / buckets
+
+    vol_arr   = array.new_float(buckets, 0.0)
+    price_arr = array.new_float(buckets, 0.0)
+
+    for b = 0 to buckets - 1
+        array.set(price_arr, b, pl + b * bucket_size)
+
+    for i = 0 to len - 1
+        bh  = high[i]
+        bl  = low [i]
+        bv  = volume[i]
+        brng = bh - bl
+        if brng <= 0.0
+            // Zero-range bar: assign all volume to the close bucket
+            b_idx = math.min(int((close[i] - pl) / bucket_size), buckets - 1)
+            b_idx := math.max(b_idx, 0)
+            array.set(vol_arr, b_idx, array.get(vol_arr, b_idx) + bv)
+        else
+            for b = 0 to buckets - 1
+                b_lo     = pl + b * bucket_size
+                b_hi     = b_lo + bucket_size
+                overlap  = math.max(0.0, math.min(bh, b_hi) - math.max(bl, b_lo))
+                contrib  = bv * (overlap / brng)
+                if contrib > 0.0
+                    array.set(vol_arr, b, array.get(vol_arr, b) + contrib)
+
+    [vol_arr, price_arr, ph, pl, bucket_size]
+
+// Find the POC index (bucket with highest volume)
+f_poc_idx(vol_arr) =>
+    max_vol = 0.0
+    poc     = 0
+    for b = 0 to array.size(vol_arr) - 1
+        v = array.get(vol_arr, b)
+        if v > max_vol
+            max_vol := v
+            poc     := b
+    poc
+
+// Find Value Area: buckets covering 70% of total volume, expanding outward from POC
+f_value_area(vol_arr, poc_idx) =>
+    total   = array.sum(vol_arr)
+    target  = total * 0.70
+    accum   = array.get(vol_arr, poc_idx)
+    va_lo   = poc_idx
+    va_hi   = poc_idx
+    n       = array.size(vol_arr)
+
+    while accum < target and (va_lo > 0 or va_hi < n - 1)
+        add_lo = va_lo > 0     ? array.get(vol_arr, va_lo - 1) : 0.0
+        add_hi = va_hi < n - 1 ? array.get(vol_arr, va_hi + 1) : 0.0
+        if add_hi >= add_lo
+            va_hi  := math.min(va_hi + 1, n - 1)
+            accum  += add_hi
+        else
+            va_lo  := math.max(va_lo - 1, 0)
+            accum  += add_lo
+
+    [va_lo, va_hi]
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DRAWING ENGINE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Persistent box/line arrays — cleared and rebuilt each bar to keep counts low
+var box[]   s1_boxes = array.new_box()
+var box[]   s2_boxes = array.new_box()
+var box[]   s3_boxes = array.new_box()
+var box[]   va_boxes = array.new_box()
+var line[]  poc_lines = array.new_line()
+var line[]  inst_lines = array.new_line()
+var label[] lbl_arr = array.new_label()
+
+f_clear_boxes(arr) =>
+    for b in arr
+        box.delete(b)
+    array.clear(arr)
+
+f_clear_lines(arr) =>
+    for l in arr
+        line.delete(l)
+    array.clear(arr)
+
+f_clear_labels(arr) =>
+    for lb in arr
+        label.delete(lb)
+    array.clear(arr)
+
+// Draw one stratum's profile
+// offset_bars: how many bars wide each stratum is (they sit side by side)
+// x_right: the rightmost bar index for this stratum
+f_draw_stratum(vol_arr, price_arr, bucket_size, max_vol, x_right, width_bars, col, box_arr) =>
+    n = array.size(vol_arr)
+    for b = 0 to n - 1
+        v      = array.get(vol_arr, b)
+        p_lo   = array.get(price_arr, b)
+        p_hi   = p_lo + bucket_size
+        // Width of box proportional to volume
+        bar_w  = v / max_vol * width_bars
+        x_left = x_right - int(bar_w)
+        bx = box.new(
+             x_left, p_hi, x_right, p_lo,
+             border_color=color.new(col, 90),
+             bgcolor=col)
+        array.push(box_arr, bx)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAIN EXECUTION — only rebuild on the last bar (or realtime)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+if barstate.islast
+
+    // ── Clear previous drawings ──────────────────────────────────────────────
+    f_clear_boxes(s1_boxes)
+    f_clear_boxes(s2_boxes)
+    f_clear_boxes(s3_boxes)
+    f_clear_boxes(va_boxes)
+    f_clear_lines(poc_lines)
+    f_clear_lines(inst_lines)
+    f_clear_labels(lbl_arr)
+
+    // ── Layout: strata sit side-by-side to the right of price action ─────────
+    // Each stratum is i_profile_width bars wide; gap = i_profile_right from edge
+    right_edge  = bar_index + i_profile_right
+    s1_right    = right_edge
+    s2_right    = right_edge +  i_profile_width + 2
+    s3_right    = right_edge + (i_profile_width + 2) * 2
+
+    // ── Compute & draw Stratum 1 ─────────────────────────────────────────────
+    if i_s1_on and bar_index >= i_s1_len
+        [v1, p1, ph1, pl1, bs1] = f_build_profile(i_s1_len, i_buckets)
+        max1 = array.max(v1)
+        if max1 > 0
+            f_draw_stratum(v1, p1, bs1, max1, s1_right, i_profile_width, i_s1_col, s1_boxes)
+            poc1     = f_poc_idx(v1)
+            poc1_p   = array.get(p1, poc1) + bs1 / 2
+            [va1_lo, va1_hi] = f_value_area(v1, poc1)
+            va1_low_p  = array.get(p1, va1_lo)
+            va1_high_p = array.get(p1, va1_hi) + bs1
+
+            if i_show_poc
+                ln = line.new(s1_right - i_profile_width, poc1_p, s1_right, poc1_p,
+                     color=i_poc_col, width=i_poc_width, style=line.style_dotted)
+                array.push(poc_lines, ln)
+
+            if i_show_va
+                vbox = box.new(s1_right - i_profile_width, va1_high_p, s1_right, va1_low_p,
+                     bgcolor=color.new(i_s1_col, i_va_alpha), border_color=color.new(i_s1_col, 80))
+                array.push(va_boxes, vbox)
+
+            if i_show_labels
+                lb = label.new(s1_right, ph1,
+                     text="S1\n" + str.tostring(i_s1_len) + "b",
+                     color=color.new(i_s1_col, 30), textcolor=color.white,
+                     style=label.style_label_down, size=size.small)
+                array.push(lbl_arr, lb)
+
+    // ── Compute & draw Stratum 2 ─────────────────────────────────────────────
+    if i_s2_on and bar_index >= i_s2_len
+        [v2, p2, ph2, pl2, bs2] = f_build_profile(i_s2_len, i_buckets)
+        max2 = array.max(v2)
+        if max2 > 0
+            f_draw_stratum(v2, p2, bs2, max2, s2_right, i_profile_width, i_s2_col, s2_boxes)
+            poc2     = f_poc_idx(v2)
+            poc2_p   = array.get(p2, poc2) + bs2 / 2
+            [va2_lo, va2_hi] = f_value_area(v2, poc2)
+            va2_low_p  = array.get(p2, va2_lo)
+            va2_high_p = array.get(p2, va2_hi) + bs2
+
+            if i_show_poc
+                ln = line.new(s2_right - i_profile_width, poc2_p, s2_right, poc2_p,
+                     color=i_poc_col, width=i_poc_width, style=line.style_dotted)
+                array.push(poc_lines, ln)
+
+            if i_show_va
+                vbox = box.new(s2_right - i_profile_width, va2_high_p, s2_right, va2_low_p,
+                     bgcolor=color.new(i_s2_col, i_va_alpha), border_color=color.new(i_s2_col, 80))
+                array.push(va_boxes, vbox)
+
+            if i_show_labels
+                lb = label.new(s2_right, ph2,
+                     text="S2\n" + str.tostring(i_s2_len) + "b",
+                     color=color.new(i_s2_col, 30), textcolor=color.white,
+                     style=label.style_label_down, size=size.small)
+                array.push(lbl_arr, lb)
+
+    // ── Compute & draw Stratum 3 ─────────────────────────────────────────────
+    if i_s3_on and bar_index >= i_s3_len
+        [v3, p3, ph3, pl3, bs3] = f_build_profile(i_s3_len, i_buckets)
+        max3 = array.max(v3)
+        if max3 > 0
+            f_draw_stratum(v3, p3, bs3, max3, s3_right, i_profile_width, i_s3_col, s3_boxes)
+            poc3     = f_poc_idx(v3)
+            poc3_p   = array.get(p3, poc3) + bs3 / 2
+            [va3_lo, va3_hi] = f_value_area(v3, poc3)
+            va3_low_p  = array.get(p3, va3_lo)
+            va3_high_p = array.get(p3, va3_hi) + bs3
+
+            if i_show_poc
+                ln = line.new(s3_right - i_profile_width, poc3_p, s3_right, poc3_p,
+                     color=i_poc_col, width=i_poc_width, style=line.style_dotted)
+                array.push(poc_lines, ln)
+
+            if i_show_va
+                vbox = box.new(s3_right - i_profile_width, va3_high_p, s3_right, va3_low_p,
+                     bgcolor=color.new(i_s3_col, i_va_alpha), border_color=color.new(i_s3_col, 80))
+                array.push(va_boxes, vbox)
+
+            if i_show_labels
+                lb = label.new(s3_right, ph3,
+                     text="S3\n" + str.tostring(i_s3_len) + "b",
+                     color=color.new(i_s3_col, 30), textcolor=color.white,
+                     style=label.style_label_down, size=size.small)
+                array.push(lbl_arr, lb)
+
+    // ── Cross-Stratum Resonance Zones ────────────────────────────────────────
+    // Price levels that are near the POC on 2 or more strata get a resonance box
+    // drawn extending across all profiles — this is the "no one else has this" layer
+    if i_s1_on and i_s2_on and bar_index >= i_s2_len
+        [v1r, p1r, ph1r, pl1r, bs1r] = f_build_profile(i_s1_len, i_buckets)
+        [v2r, p2r, ph2r, pl2r, bs2r] = f_build_profile(i_s2_len, i_buckets)
+        poc1r   = f_poc_idx(v1r)
+        poc1r_p = array.get(p1r, poc1r) + bs1r / 2
+        poc2r   = f_poc_idx(v2r)
+        poc2r_p = array.get(p2r, poc2r) + bs2r / 2
+        tolerance = syminfo.mintick * 10 + (ph1r - pl1r) * 0.015
+
+        if math.abs(poc1r_p - poc2r_p) <= tolerance
+            res_p_hi = math.max(poc1r_p, poc2r_p) + bs1r
+            res_p_lo = math.min(poc1r_p, poc2r_p) - bs1r
+            res_box  = box.new(
+                 s1_right - i_profile_width, res_p_hi,
+                 s2_right,                  res_p_lo,
+                 bgcolor=i_resonance_col,
+                 border_color=color.new(#FF00FF, 40),
+                 border_width=2)
+            array.push(va_boxes, res_box)
+
+            if i_show_labels
+                rlb = label.new(s2_right, res_p_hi,
+                     text="⚡ RESONANCE",
+                     color=color.new(#FF00FF, 20), textcolor=color.white,
+                     style=label.style_label_left, size=size.small)
+                array.push(lbl_arr, rlb)
+
+    // ── Institutional HTF Nodes ───────────────────────────────────────────────
+    if i_inst_on
+        inst_count = 0
+        for i = 0 to math.min(50, bar_index) - 1
+            if htf_is_institutional[i] and inst_count < 30
+                node_price = htf_mid[i]
+                if not na(node_price)
+                    ln = line.new(
+                         bar_index - i_s3_len, node_price,
+                         bar_index + i_profile_right + (i_profile_width + 2) * 3, node_price,
+                         color=i_inst_col, width=i_inst_width,
+                         style=line.style_dashed)
+                    array.push(inst_lines, ln)
+                    inst_count += 1
