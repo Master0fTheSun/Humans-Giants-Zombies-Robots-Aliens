@@ -575,7 +575,7 @@ def get_yfinance_data() -> dict:
                     base.update({
                         "current_price": td_price,
                         "change":        round(td_price - prev, 2),
-                        "change_pct":    round((td_price - prev) / prev * 100, 2) if prev else 0,
+                        "change_pct":    round((td_price - prev) / prev * 100, 2) if prev and prev != 0 else 0,
                     })
                     contracts[disp_sym] = base
                     errors.append(f"{disp_sym}: yfinance failed ({err_msg}) — using Twelve Data price")

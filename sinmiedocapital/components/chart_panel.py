@@ -15,6 +15,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import yfinance as yf
+import config
 
 try:
     from streamlit_plotly_events import plotly_events as _plotly_events
@@ -48,7 +49,7 @@ _COLOR_MAP = {
 
 # ── Data ──────────────────────────────────────────────────────────────────────
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=config.REFRESH_INTERVAL, show_spinner=False)
 def _download(ticker: str, period: str, interval: str) -> pd.DataFrame:
     try:
         df = yf.download(ticker, period=period, interval=interval,
@@ -60,6 +61,11 @@ def _download(ticker: str, period: str, interval: str) -> pd.DataFrame:
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
     return df.dropna(subset=["Open", "High", "Low", "Close"])
+
+
+def clear_chart_cache():
+    """Force-expire the chart download cache — call when user hits Refresh."""
+    _download.clear()
 
 
 def _vwap_daily(df: pd.DataFrame) -> pd.Series:
@@ -637,3 +643,9 @@ def render_chart_panel(symbol: str, height: int = 520):
                 st.rerun()
 
     _drawings_panel(symbol)
+
+    try:
+        last_bar_str = pd.Timestamp(df.index[-1]).strftime("%H:%M")
+    except Exception:
+        last_bar_str = "—"
+    st.caption(f"Last bar: {last_bar_str} ET  ·  ~15 min delayed  ·  refreshes every {config.REFRESH_INTERVAL}s")

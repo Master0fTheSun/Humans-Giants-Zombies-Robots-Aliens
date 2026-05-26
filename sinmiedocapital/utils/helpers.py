@@ -56,23 +56,35 @@ def importance_dot(importance: str) -> str:
     return f'<span style="color:{color};font-weight:700;">●</span>'
 
 
-def delta_color(value: float) -> str:
-    if value > 0:
-        return "#2ecc71"
-    if value < 0:
-        return "#e74c3c"
-    return "#95a5a6"
+def delta_color(value) -> str:
+    try:
+        if value is None or value != value:
+            return "#95a5a6"
+        return "#2ecc71" if value > 0 else "#e74c3c" if value < 0 else "#95a5a6"
+    except Exception:
+        return "#95a5a6"
 
 
-def fmt_price(value: float, decimals: int = 2) -> str:
-    return f"{value:,.{decimals}f}"
+def fmt_price(value, decimals: int = 2) -> str:
+    try:
+        return f"{float(value):,.{decimals}f}"
+    except Exception:
+        return "—"
 
 
-def fmt_change(value: float, decimals: int = 2) -> str:
-    sign = "+" if value >= 0 else ""
-    return f"{sign}{value:.{decimals}f}"
+def fmt_change(value, decimals: int = 2) -> str:
+    try:
+        v = float(value)
+        sign = "+" if v >= 0 else ""
+        return f"{sign}{v:.{decimals}f}"
+    except Exception:
+        return "—"
 
 
-def fmt_pct(value: float) -> str:
-    sign = "+" if value >= 0 else ""
-    return f"{sign}{value:.2f}%"
+def fmt_pct(value) -> str:
+    try:
+        v = float(value)
+        sign = "+" if v >= 0 else ""
+        return f"{sign}{v:.2f}%"
+    except Exception:
+        return "—"

@@ -127,7 +127,7 @@ from components.thesis import render_thesis
 from components.macro_panel import render_macro_panel
 from components.news_feed import render_news_feed
 from components.manual_input import render_manual_input_panel
-from components.chart_panel import render_chart_panel
+from components.chart_panel import render_chart_panel, clear_chart_cache
 from components.rr_calculator import render_rr_calculator
 from components.pre_session_checklist import render_pre_session_checklist
 from utils.helpers import risk_badge
@@ -151,6 +151,7 @@ _now   = time.time()
 _stale = (_now - st.session_state.get("_data_fetched_at", 0)) >= config.REFRESH_INTERVAL
 
 if "data" not in st.session_state or _stale:
+    clear_chart_cache()
     st.session_state.data          = get_dashboard_data()
     st.session_state["_data_fetched_at"] = _now
 
@@ -184,6 +185,7 @@ with hcol2:
 with hcol3:
     st.markdown('<div style="padding-top:14px;">', unsafe_allow_html=True)
     if st.button("Refresh", key="refresh_btn"):
+        clear_chart_cache()
         st.session_state.data = get_dashboard_data()
         st.session_state["_data_fetched_at"] = time.time()
         st.rerun()
