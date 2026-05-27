@@ -366,14 +366,17 @@ if barstate.islast
                  style=label.style_label_left, size=size.small))
 
     // ── POC MIGRATION SIGNAL ──────────────────────────────────────────────────
-    if not na(s1_poc) and not na(s2_poc) and not na(s3_poc)
-        up     = s1_poc > s2_poc and s2_poc > s3_poc
-        dn     = s1_poc < s2_poc and s2_poc < s3_poc
+    if not na(s1_poc) and not na(s2_poc)
+        up     = s1_poc > s2_poc
+        dn     = s1_poc < s2_poc
         regime := up ? "⬆ ACCUM" : dn ? "⬇ DISTR" : "↔ ROTAT"
         mc     = up ? color.new(#00CC55, 25) : dn ? color.new(#FF3333, 25) : color.new(#888888, 25)
         mtc    = up ? color.lime             : dn ? color.red              : color.gray
-        array.push(g_ln, line.new(s3_r, s3_poc, s2_r, s2_poc,
-             color=mc, width=2, style=line.style_arrow_right))
+        // S3→S2 arrow only when S3 is active
+        if not na(s3_poc)
+            array.push(g_ln, line.new(s3_r, s3_poc, s2_r, s2_poc,
+                 color=mc, width=2, style=line.style_arrow_right))
+        // Always draw S2→S1 arrow
         array.push(g_ln, line.new(s2_r, s2_poc, s1_r, s1_poc,
              color=mc, width=2, style=line.style_arrow_right))
         array.push(g_lb, label.new(s1_r + 2, s1_poc,
