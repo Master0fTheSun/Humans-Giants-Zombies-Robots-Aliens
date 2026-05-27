@@ -1,0 +1,437 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0
+// © Historical Volume Strata [HVS] — Compact Edition
+
+//@version=6
+indicator("Historical Volume Strata [HVS]", overlay=true, max_bars_back=5000,
+     max_boxes_count=500, max_lines_count=500, max_labels_count=60)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DISPLAY MODE
+// Compact = clean alongside other indicators (recommended)
+// Full    = all extensions, institutional lines, LVN highlighting
+// ═══════════════════════════════════════════════════════════════════════════════
+
+i_mode   = input.string("Compact", "Display Mode",
+     options=["Compact", "Full"], group="⬛ Display")
+
+COMPACT  = i_mode == "Compact"
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SETTINGS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var string GP = "📊 Profiles"
+var string GI = "🏦 Institutional"
+var string GS = "🎨 Style"
+
+i_buckets   = input.int   (30,    "Price Buckets",           minval=10, maxval=60,    group=GP)
+i_width     = input.int   (12,    "Profile Width (bars)",    minval=5,  maxval=60,    group=GP)
+i_gap       = input.int   (3,     "Bars from Right Edge",    minval=0,  maxval=30,    group=GP)
+
+i_s1_on     = input.bool  (true,  "Show S1 — Recent",                                group=GP)
+i_s1_len    = input.int   (20,    "  Lookback (bars)",       minval=5,               group=GP)
+i_s1_col    = input.color (color.new(#00E5FF, 55), "  Color",                        group=GP)
+
+i_s2_on     = input.bool  (true,  "Show S2 — Medium",                                group=GP)
+i_s2_len    = input.int   (63,    "  Lookback (bars)",       minval=10,              group=GP)
+i_s2_col    = input.color (color.new(#FFD700, 65), "  Color",                        group=GP)
+
+i_s3_on     = input.bool  (false, "Show S3 — Long (Macro)",                          group=GP)
+i_s3_len    = input.int   (252,   "  Lookback (bars)",       minval=20,              group=GP)
+i_s3_col    = input.color (color.new(#FF4C4C, 75), "  Color",                        group=GP)
+
+i_inst_on   = input.bool  (false, "Show Institutional Nodes",                        group=GI)
+i_htf_tf    = input.timeframe("W","  HTF Timeframe",                                 group=GI)
+i_inst_mult = input.float (2.0,   "  Vol Multiplier",        minval=1.1, step=0.1,   group=GI)
+
+i_poc_col   = input.color (#FFFFFF,                "POC Color",                      group=GS)
+i_res_col   = input.color (color.new(#FF00FF, 20), "Resonance Zone Color",           group=GS)
+i_lvn_col   = input.color (color.new(#FFFFFF, 50), "LVN Color (Full mode only)",     group=GS)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HTF INSTITUTIONAL DATA
+// ═══════════════════════════════════════════════════════════════════════════════
+
+[htf_h, htf_l, htf_o, htf_c, htf_vol, htf_sma] = request.security(
+     syminfo.tickerid, i_htf_tf,
+     [high, low, open, close, volume, ta.sma(volume, 20)],
+     lookahead=barmerge.lookahead_off)
+
+htf_is_inst = htf_vol > htf_sma * i_inst_mult
+htf_mid     = (htf_h + htf_l) / 2.0
+htf_eff     = htf_h != htf_l ? math.abs(htf_c - htf_o) / (htf_h - htf_l) : 0.0
+htf_is_eff  = htf_eff >= 0.35
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PROFILE ENGINE
+// Distributes each bar's volume across the high-low range into price buckets.
+// Bull volume = bars where close >= open. Bear = opposite.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+f_profile(len, n) =>
+    ph  = ta.highest(high, len)
+    pl  = ta.lowest (low,  len)
+    bsz = ph == pl ? syminfo.mintick : (ph - pl) / n
+
+    vol  = array.new_float(n, 0.0)
+    bull = array.new_float(n, 0.0)
+    bear = array.new_float(n, 0.0)
+    px   = array.new_float(n, 0.0)
+
+    for b = 0 to n - 1
+        array.set(px, b, pl + b * bsz)
+
+    for i = 0 to len - 1
+        bh   = high[i]
+        bl   = low[i]
+        bv   = volume[i]
+        brng = bh - bl
+        up   = close[i] >= open[i]
+
+        if brng <= 0.0
+            idx = math.max(math.min(int((close[i] - pl) / bsz), n - 1), 0)
+            array.set(vol, idx, array.get(vol, idx) + bv)
+            if up
+                array.set(bull, idx, array.get(bull, idx) + bv)
+            else
+                array.set(bear, idx, array.get(bear, idx) + bv)
+        else
+            for b = 0 to n - 1
+                b_lo = pl + b * bsz
+                b_hi = b_lo + bsz
+                ov   = math.max(0.0, math.min(bh, b_hi) - math.max(bl, b_lo))
+                if ov > 0.0
+                    cv = bv * (ov / brng)
+                    array.set(vol, b, array.get(vol, b) + cv)
+                    if up
+                        array.set(bull, b, array.get(bull, b) + cv)
+                    else
+                        array.set(bear, b, array.get(bear, b) + cv)
+
+    [vol, bull, bear, px, ph, pl, bsz]
+
+f_poc(vol, n) =>
+    mx  = 0.0
+    idx = 0
+    for b = 0 to n - 1
+        v = array.get(vol, b)
+        if v > mx
+            mx  := v
+            idx := b
+    idx
+
+f_va(vol, poc, n) =>
+    tot    = array.sum(vol)
+    target = tot * 0.70
+    acc    = array.get(vol, poc)
+    lo     = poc
+    hi     = poc
+    while acc < target and (lo > 0 or hi < n - 1)
+        a_lo = lo > 0     ? array.get(vol, lo - 1) : 0.0
+        a_hi = hi < n - 1 ? array.get(vol, hi + 1) : 0.0
+        if a_hi >= a_lo
+            hi  := math.min(hi + 1, n - 1)
+            acc += a_hi
+        else
+            lo  := math.max(lo - 1, 0)
+            acc += a_lo
+    [lo, hi]
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OBJECT POOLS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var box[]   g_bx = array.new_box()
+var line[]  g_ln = array.new_line()
+var label[] g_lb = array.new_label()
+
+f_clear() =>
+    for b  in g_bx
+        box.delete(b)
+    for l  in g_ln
+        line.delete(l)
+    for lb in g_lb
+        label.delete(lb)
+    array.clear(g_bx)
+    array.clear(g_ln)
+    array.clear(g_lb)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TABLE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var table tbl = table.new(position.top_right, 3, 6,
+     bgcolor=color.new(#1A1A2E, 10),
+     border_color=color.new(#444466, 80), border_width=1,
+     frame_color=color.new(#444466, 60),  frame_width=1)
+
+f_cell(r, c, txt, tc, bg) =>
+    table.cell(tbl, c, r, txt, text_color=tc, bgcolor=bg, text_size=size.small)
+
+f_pct(p) =>
+    not na(p) ? str.tostring(math.round((p / close - 1.0) * 100.0, 2)) + "%" : "—"
+
+f_px(p) =>
+    not na(p) ? str.tostring(math.round(p, syminfo.mintick < 0.01 ? 4 : 2)) : "—"
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PERSISTENT STATE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var float  s1_poc = na
+var float  s2_poc = na
+var float  s3_poc = na
+var float  s1_vah = na
+var float  s1_val = na
+var float  s2_vah = na
+var float  s2_val = na
+var float  s3_vah = na
+var float  s3_val = na
+var string regime = "—"
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAIN
+// ═══════════════════════════════════════════════════════════════════════════════
+
+if barstate.islast
+    f_clear()
+
+    re   = bar_index + i_gap
+    s1_r = re
+    s2_r = re +  i_width + 2
+    s3_r = re + (i_width + 2) * 2
+
+    // ── STRATUM 1 — RECENT ────────────────────────────────────────────────────
+    if i_s1_on and bar_index >= i_s1_len
+        [v1, b1, r1, p1, ph1, pl1, bsz1] = f_profile(i_s1_len, i_buckets)
+        mx1  = array.max(v1)
+        avg1 = array.sum(v1) / i_buckets
+
+        if mx1 > 0
+            for b = 0 to i_buckets - 1
+                tv   = array.get(v1, b)
+                bul  = array.get(b1, b)
+                ber  = array.get(r1, b)
+                p_lo = array.get(p1, b)
+                p_hi = p_lo + bsz1
+                bw   = int(tv / mx1 * i_width)
+                x_l  = s1_r - bw
+                tot  = bul + ber
+                dr   = tot > 0.0 ? bul / tot : 0.5
+                // In Full mode, white-border any Low Volume Node
+                is_l = not COMPACT and avg1 > 0 and tv < avg1 * 0.35
+                fc   = is_l ? i_lvn_col :
+                       color.from_gradient(dr, 0.0, 1.0,
+                            color.new(#FF3333, color.t(i_s1_col)),
+                            color.new(#00CC55, color.t(i_s1_col)))
+                bc   = is_l ? color.new(#FFFFFF, 20) : color.new(i_s1_col, 85)
+                array.push(g_bx, box.new(x_l, p_hi, s1_r, p_lo,
+                     bgcolor=fc, border_color=bc, border_width=is_l ? 2 : 1))
+
+            poc1_i = f_poc(v1, i_buckets)
+            s1_poc := array.get(p1, poc1_i) + bsz1 * 0.5
+            [va1_lo, va1_hi] = f_va(v1, poc1_i, i_buckets)
+            s1_vah := array.get(p1, va1_hi) + bsz1
+            s1_val := array.get(p1, va1_lo)
+
+            // POC dotted line on profile
+            array.push(g_ln, line.new(s1_r - i_width, s1_poc, s1_r, s1_poc,
+                 color=i_poc_col, width=2, style=line.style_dotted))
+            // VA shaded box on profile
+            array.push(g_bx, box.new(s1_r - i_width, s1_vah, s1_r, s1_val,
+                 bgcolor=color.new(i_s1_col, 88), border_color=color.new(i_s1_col, 80)))
+            // Full mode: extend POC and VA across chart
+            if not COMPACT
+                array.push(g_ln, line.new(bar_index - i_s1_len, s1_poc, bar_index, s1_poc,
+                     color=color.new(i_s1_col, 50), width=1, style=line.style_dashed))
+                array.push(g_ln, line.new(bar_index - i_s1_len, s1_vah, bar_index, s1_vah,
+                     color=color.new(i_s1_col, 65), width=1, style=line.style_dotted))
+                array.push(g_ln, line.new(bar_index - i_s1_len, s1_val, bar_index, s1_val,
+                     color=color.new(i_s1_col, 65), width=1, style=line.style_dotted))
+            // Label
+            array.push(g_lb, label.new(s1_r, ph1,
+                 text="S1 · " + str.tostring(i_s1_len) + "b",
+                 color=color.new(i_s1_col, 30), textcolor=color.white,
+                 style=label.style_label_down, size=size.small))
+
+    // ── STRATUM 2 — MEDIUM ────────────────────────────────────────────────────
+    if i_s2_on and bar_index >= i_s2_len
+        [v2, b2, r2, p2, ph2, pl2, bsz2] = f_profile(i_s2_len, i_buckets)
+        mx2  = array.max(v2)
+        avg2 = array.sum(v2) / i_buckets
+
+        if mx2 > 0
+            for b = 0 to i_buckets - 1
+                tv   = array.get(v2, b)
+                bul  = array.get(b2, b)
+                ber  = array.get(r2, b)
+                p_lo = array.get(p2, b)
+                p_hi = p_lo + bsz2
+                bw   = int(tv / mx2 * i_width)
+                x_l  = s2_r - bw
+                tot  = bul + ber
+                dr   = tot > 0.0 ? bul / tot : 0.5
+                is_l = not COMPACT and avg2 > 0 and tv < avg2 * 0.35
+                fc   = is_l ? i_lvn_col :
+                       color.from_gradient(dr, 0.0, 1.0,
+                            color.new(#FF3333, color.t(i_s2_col)),
+                            color.new(#00CC55, color.t(i_s2_col)))
+                bc   = is_l ? color.new(#FFFFFF, 20) : color.new(i_s2_col, 85)
+                array.push(g_bx, box.new(x_l, p_hi, s2_r, p_lo,
+                     bgcolor=fc, border_color=bc, border_width=is_l ? 2 : 1))
+
+            poc2_i = f_poc(v2, i_buckets)
+            s2_poc := array.get(p2, poc2_i) + bsz2 * 0.5
+            [va2_lo, va2_hi] = f_va(v2, poc2_i, i_buckets)
+            s2_vah := array.get(p2, va2_hi) + bsz2
+            s2_val := array.get(p2, va2_lo)
+
+            array.push(g_ln, line.new(s2_r - i_width, s2_poc, s2_r, s2_poc,
+                 color=i_poc_col, width=2, style=line.style_dotted))
+            array.push(g_bx, box.new(s2_r - i_width, s2_vah, s2_r, s2_val,
+                 bgcolor=color.new(i_s2_col, 88), border_color=color.new(i_s2_col, 80)))
+            if not COMPACT
+                array.push(g_ln, line.new(bar_index - i_s2_len, s2_poc, bar_index, s2_poc,
+                     color=color.new(i_s2_col, 50), width=1, style=line.style_dashed))
+                array.push(g_ln, line.new(bar_index - i_s2_len, s2_vah, bar_index, s2_vah,
+                     color=color.new(i_s2_col, 65), width=1, style=line.style_dotted))
+                array.push(g_ln, line.new(bar_index - i_s2_len, s2_val, bar_index, s2_val,
+                     color=color.new(i_s2_col, 65), width=1, style=line.style_dotted))
+            array.push(g_lb, label.new(s2_r, ph2,
+                 text="S2 · " + str.tostring(i_s2_len) + "b",
+                 color=color.new(i_s2_col, 30), textcolor=color.white,
+                 style=label.style_label_down, size=size.small))
+
+    // ── STRATUM 3 — LONG / MACRO ──────────────────────────────────────────────
+    if i_s3_on and bar_index >= i_s3_len
+        [v3, b3, r3, p3, ph3, pl3, bsz3] = f_profile(i_s3_len, i_buckets)
+        mx3  = array.max(v3)
+        avg3 = array.sum(v3) / i_buckets
+
+        if mx3 > 0
+            for b = 0 to i_buckets - 1
+                tv   = array.get(v3, b)
+                bul  = array.get(b3, b)
+                ber  = array.get(r3, b)
+                p_lo = array.get(p3, b)
+                p_hi = p_lo + bsz3
+                bw   = int(tv / mx3 * i_width)
+                x_l  = s3_r - bw
+                tot  = bul + ber
+                dr   = tot > 0.0 ? bul / tot : 0.5
+                is_l = not COMPACT and avg3 > 0 and tv < avg3 * 0.35
+                fc   = is_l ? i_lvn_col :
+                       color.from_gradient(dr, 0.0, 1.0,
+                            color.new(#FF3333, color.t(i_s3_col)),
+                            color.new(#00CC55, color.t(i_s3_col)))
+                bc   = is_l ? color.new(#FFFFFF, 20) : color.new(i_s3_col, 85)
+                array.push(g_bx, box.new(x_l, p_hi, s3_r, p_lo,
+                     bgcolor=fc, border_color=bc, border_width=is_l ? 2 : 1))
+
+            poc3_i = f_poc(v3, i_buckets)
+            s3_poc := array.get(p3, poc3_i) + bsz3 * 0.5
+            [va3_lo, va3_hi] = f_va(v3, poc3_i, i_buckets)
+            s3_vah := array.get(p3, va3_hi) + bsz3
+            s3_val := array.get(p3, va3_lo)
+
+            array.push(g_ln, line.new(s3_r - i_width, s3_poc, s3_r, s3_poc,
+                 color=i_poc_col, width=2, style=line.style_dotted))
+            array.push(g_bx, box.new(s3_r - i_width, s3_vah, s3_r, s3_val,
+                 bgcolor=color.new(i_s3_col, 88), border_color=color.new(i_s3_col, 80)))
+            if not COMPACT
+                array.push(g_ln, line.new(bar_index - i_s3_len, s3_poc, bar_index, s3_poc,
+                     color=color.new(i_s3_col, 50), width=1, style=line.style_dashed))
+                array.push(g_ln, line.new(bar_index - i_s3_len, s3_vah, bar_index, s3_vah,
+                     color=color.new(i_s3_col, 65), width=1, style=line.style_dotted))
+                array.push(g_ln, line.new(bar_index - i_s3_len, s3_val, bar_index, s3_val,
+                     color=color.new(i_s3_col, 65), width=1, style=line.style_dotted))
+            array.push(g_lb, label.new(s3_r, ph3,
+                 text="S3 · " + str.tostring(i_s3_len) + "b",
+                 color=color.new(i_s3_col, 30), textcolor=color.white,
+                 style=label.style_label_down, size=size.small))
+
+    // ── RESONANCE ZONE ────────────────────────────────────────────────────────
+    if not na(s1_poc) and not na(s2_poc)
+        if math.abs(s1_poc - s2_poc) <= close * 0.005
+            rhi = math.max(s1_poc, s2_poc) + close * 0.001
+            rlo = math.min(s1_poc, s2_poc) - close * 0.001
+            array.push(g_bx, box.new(s1_r - i_width, rhi, s2_r, rlo,
+                 bgcolor=i_res_col, border_color=color.new(#FF00FF, 40), border_width=2))
+            array.push(g_lb, label.new(s2_r, rhi, text="⚡ RESONANCE",
+                 color=color.new(#FF00FF, 20), textcolor=color.white,
+                 style=label.style_label_left, size=size.small))
+
+    // ── POC MIGRATION SIGNAL ──────────────────────────────────────────────────
+    if not na(s1_poc) and not na(s2_poc) and not na(s3_poc)
+        up     = s1_poc > s2_poc and s2_poc > s3_poc
+        dn     = s1_poc < s2_poc and s2_poc < s3_poc
+        regime := up ? "⬆ ACCUM" : dn ? "⬇ DISTR" : "↔ ROTAT"
+        mc     = up ? color.new(#00CC55, 25) : dn ? color.new(#FF3333, 25) : color.new(#888888, 25)
+        mtc    = up ? color.lime             : dn ? color.red              : color.gray
+        array.push(g_ln, line.new(s3_r, s3_poc, s2_r, s2_poc,
+             color=mc, width=2, style=line.style_arrow_right))
+        array.push(g_ln, line.new(s2_r, s2_poc, s1_r, s1_poc,
+             color=mc, width=2, style=line.style_arrow_right))
+        array.push(g_lb, label.new(s1_r + 2, s1_poc,
+             text=regime, color=mc, textcolor=mtc,
+             style=label.style_label_left, size=size.normal))
+
+    // ── INSTITUTIONAL NODES (Full mode or when manually enabled) ──────────────
+    if i_inst_on
+        cnt = 0
+        for i = 0 to math.min(60, bar_index) - 1
+            if htf_is_inst[i] and cnt < 25 and not na(htf_mid[i])
+                nc  = htf_is_eff[i] ? color.new(#FF8C00, 30) : color.new(#FFFF00, 30)
+                ns  = htf_is_eff[i] ? line.style_solid        : line.style_dashed
+                nw  = htf_is_eff[i] ? 2 : 1
+                array.push(g_ln, line.new(
+                     bar_index - i_s3_len, htf_mid[i],
+                     re + (i_width + 2) * 3, htf_mid[i],
+                     color=nc, width=nw, style=ns))
+                cnt += 1
+
+    // ── INFO TABLE ────────────────────────────────────────────────────────────
+    hb = color.new(#2A2A4A, 10)
+    vb = color.new(#1A1A2E, 25)
+    hc = color.new(#AAAACC, 0)
+
+    f_cell(0, 0, "HVS",     hc, hb)
+    f_cell(0, 1, "POC",     hc, hb)
+    f_cell(0, 2, "Δ Close", hc, hb)
+
+    if i_s1_on and not na(s1_poc)
+        f_cell(1, 0, "S1 (" + str.tostring(i_s1_len) + "b)", color.new(#00E5FF, 0), vb)
+        f_cell(1, 1, f_px(s1_poc),  color.white, vb)
+        f_cell(1, 2, f_pct(s1_poc), color.white, vb)
+    if i_s2_on and not na(s2_poc)
+        f_cell(2, 0, "S2 (" + str.tostring(i_s2_len) + "b)", color.new(#FFD700, 0), vb)
+        f_cell(2, 1, f_px(s2_poc),  color.white, vb)
+        f_cell(2, 2, f_pct(s2_poc), color.white, vb)
+    if i_s3_on and not na(s3_poc)
+        f_cell(3, 0, "S3 (" + str.tostring(i_s3_len) + "b)", color.new(#FF4C4C, 0), vb)
+        f_cell(3, 1, f_px(s3_poc),  color.white, vb)
+        f_cell(3, 2, f_pct(s3_poc), color.white, vb)
+
+    rc = str.contains(regime, "ACCUM") ? color.lime :
+         str.contains(regime, "DISTR") ? color.red  : color.gray
+    f_cell(4, 0, "Regime", hc, hb)
+    f_cell(4, 1, regime,   rc, hb)
+    f_cell(4, 2, "",       rc, hb)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ALERTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+alertcondition(not na(s1_poc) and ta.cross(close, s1_poc),
+     "Price Crosses S1 POC",    "HVS: Price crossed S1 POC")
+alertcondition(not na(s2_poc) and ta.cross(close, s2_poc),
+     "Price Crosses S2 POC",    "HVS: Price crossed S2 POC")
+alertcondition(not na(s3_poc) and ta.cross(close, s3_poc),
+     "Price Crosses S3 POC",    "HVS: Price crossed S3 POC (macro)")
+alertcondition(not na(s1_vah) and ta.crossover(close, s1_vah),
+     "Bullish S1 VA Breakout",  "HVS: Close broke above S1 Value Area High")
+alertcondition(not na(s1_val) and ta.crossunder(close, s1_val),
+     "Bearish S1 VA Breakdown", "HVS: Close broke below S1 Value Area Low")
+alertcondition(not na(s1_poc) and not na(s2_poc) and
+     math.abs(s1_poc - s2_poc) / close < 0.005,
+     "Resonance Zone Active",   "HVS: S1/S2 POC resonance — high-conviction level")
