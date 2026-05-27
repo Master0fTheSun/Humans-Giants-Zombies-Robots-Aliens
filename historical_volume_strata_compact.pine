@@ -197,9 +197,9 @@ if barstate.islast
     f_clear()
 
     re   = bar_index + i_gap
-    s1_r = re
-    s2_r = re +  i_width + 2
-    s3_r = re + (i_width + 2) * 2
+    s1_r = re + i_width
+    s2_r = re + i_width * 2 + 2
+    s3_r = re + i_width * 3 + 4
 
     // ── STRATUM 1 — RECENT ────────────────────────────────────────────────────
     if i_s1_on and bar_index >= i_s1_len
@@ -353,11 +353,15 @@ if barstate.islast
     // ── RESONANCE ZONE ────────────────────────────────────────────────────────
     if not na(s1_poc) and not na(s2_poc)
         if math.abs(s1_poc - s2_poc) <= close * 0.005
-            rhi = math.max(s1_poc, s2_poc) + close * 0.001
-            rlo = math.min(s1_poc, s2_poc) - close * 0.001
-            array.push(g_bx, box.new(s1_r - i_width, rhi, s2_r, rlo,
+            poc_res = (s1_poc + s2_poc) / 2.0
+            tk      = syminfo.mintick * 3
+            // Dashed key-level ray back through candle history (VRVP-style)
+            array.push(g_ln, line.new(bar_index - i_s1_len, poc_res, re, poc_res,
+                 color=color.new(#FF00FF, 30), width=2, style=line.style_dashed))
+            // Thin zone inside profile columns only — no candle overlap
+            array.push(g_bx, box.new(re, poc_res + tk, s2_r, poc_res - tk,
                  bgcolor=i_res_col, border_color=color.new(#FF00FF, 40), border_width=2))
-            array.push(g_lb, label.new(s2_r, rhi, text="⚡ RESONANCE",
+            array.push(g_lb, label.new(s2_r, poc_res + tk, text="⚡ RESONANCE",
                  color=color.new(#FF00FF, 20), textcolor=color.white,
                  style=label.style_label_left, size=size.small))
 
@@ -386,7 +390,7 @@ if barstate.islast
                 nw  = htf_is_eff[i] ? 2 : 1
                 array.push(g_ln, line.new(
                      bar_index - i_s3_len, htf_mid[i],
-                     re + (i_width + 2) * 3, htf_mid[i],
+                     s3_r, htf_mid[i],
                      color=nc, width=nw, style=ns))
                 cnt += 1
 
