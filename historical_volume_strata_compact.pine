@@ -11,8 +11,10 @@ indicator("Historical Volume Strata [HVS]", overlay=true, max_bars_back=5000,
 // Full    = all extensions, institutional lines, LVN highlighting
 // ═══════════════════════════════════════════════════════════════════════════════
 
-i_mode   = input.string("Compact", "Display Mode",
+i_mode          = input.string("Compact", "Display Mode",
      options=["Compact", "Full"], group="⬛ Display")
+i_show_profiles = input.bool(true, "Show Volume Profiles",  group="⬛ Display")
+i_show_cycle    = input.bool(true, "Show Market Cycle Label (ACCUM/DISTR/ROTAT)", group="⬛ Display")
 
 COMPACT  = i_mode == "Compact"
 
@@ -208,51 +210,52 @@ if barstate.islast
         avg1 = array.sum(v1) / i_buckets
 
         if mx1 > 0
-            for b = 0 to i_buckets - 1
-                tv   = array.get(v1, b)
-                bul  = array.get(b1, b)
-                ber  = array.get(r1, b)
-                p_lo = array.get(p1, b)
-                p_hi = p_lo + bsz1
-                bw   = int(tv / mx1 * i_width)
-                x_l  = s1_r - bw
-                tot  = bul + ber
-                dr   = tot > 0.0 ? bul / tot : 0.5
-                // In Full mode, white-border any Low Volume Node
-                is_l = not COMPACT and avg1 > 0 and tv < avg1 * 0.35
-                fc   = is_l ? i_lvn_col :
-                       color.from_gradient(dr, 0.0, 1.0,
-                            color.new(#FF3333, color.t(i_s1_col)),
-                            color.new(#00CC55, color.t(i_s1_col)))
-                bc   = is_l ? color.new(#FFFFFF, 20) : color.new(i_s1_col, 85)
-                array.push(g_bx, box.new(x_l, p_hi, s1_r, p_lo,
-                     bgcolor=fc, border_color=bc, border_width=is_l ? 2 : 1))
-
+            // Always calculate POC/VA prices (needed for cycle label + table)
             poc1_i = f_poc(v1, i_buckets)
             s1_poc := array.get(p1, poc1_i) + bsz1 * 0.5
             [va1_lo, va1_hi] = f_va(v1, poc1_i, i_buckets)
             s1_vah := array.get(p1, va1_hi) + bsz1
             s1_val := array.get(p1, va1_lo)
 
-            // POC dotted line on profile
-            array.push(g_ln, line.new(s1_r - i_width, s1_poc, s1_r, s1_poc,
-                 color=i_poc_col, width=2, style=line.style_dotted))
-            // VA shaded box on profile
-            array.push(g_bx, box.new(s1_r - i_width, s1_vah, s1_r, s1_val,
-                 bgcolor=color.new(i_s1_col, 88), border_color=color.new(i_s1_col, 80)))
-            // Full mode: extend POC and VA across chart
-            if not COMPACT
-                array.push(g_ln, line.new(bar_index - i_s1_len, s1_poc, bar_index, s1_poc,
-                     color=color.new(i_s1_col, 50), width=1, style=line.style_dashed))
-                array.push(g_ln, line.new(bar_index - i_s1_len, s1_vah, bar_index, s1_vah,
-                     color=color.new(i_s1_col, 65), width=1, style=line.style_dotted))
-                array.push(g_ln, line.new(bar_index - i_s1_len, s1_val, bar_index, s1_val,
-                     color=color.new(i_s1_col, 65), width=1, style=line.style_dotted))
-            // Label
-            array.push(g_lb, label.new(s1_r, ph1,
-                 text="S1 · " + str.tostring(i_s1_len) + "b",
-                 color=color.new(i_s1_col, 30), textcolor=color.white,
-                 style=label.style_label_down, size=size.small))
+            // Only draw profile visuals when Show Volume Profiles is ON
+            if i_show_profiles
+                for b = 0 to i_buckets - 1
+                    tv   = array.get(v1, b)
+                    bul  = array.get(b1, b)
+                    ber  = array.get(r1, b)
+                    p_lo = array.get(p1, b)
+                    p_hi = p_lo + bsz1
+                    bw   = int(tv / mx1 * i_width)
+                    x_l  = s1_r - bw
+                    tot  = bul + ber
+                    dr   = tot > 0.0 ? bul / tot : 0.5
+                    is_l = not COMPACT and avg1 > 0 and tv < avg1 * 0.35
+                    fc   = is_l ? i_lvn_col :
+                           color.from_gradient(dr, 0.0, 1.0,
+                                color.new(#FF3333, color.t(i_s1_col)),
+                                color.new(#00CC55, color.t(i_s1_col)))
+                    bc   = is_l ? color.new(#FFFFFF, 20) : color.new(i_s1_col, 85)
+                    array.push(g_bx, box.new(x_l, p_hi, s1_r, p_lo,
+                         bgcolor=fc, border_color=bc, border_width=is_l ? 2 : 1))
+                // POC dotted line on profile
+                array.push(g_ln, line.new(s1_r - i_width, s1_poc, s1_r, s1_poc,
+                     color=i_poc_col, width=2, style=line.style_dotted))
+                // VA shaded box on profile
+                array.push(g_bx, box.new(s1_r - i_width, s1_vah, s1_r, s1_val,
+                     bgcolor=color.new(i_s1_col, 88), border_color=color.new(i_s1_col, 80)))
+                // Full mode: extend POC and VA across chart
+                if not COMPACT
+                    array.push(g_ln, line.new(bar_index - i_s1_len, s1_poc, bar_index, s1_poc,
+                         color=color.new(i_s1_col, 50), width=1, style=line.style_dashed))
+                    array.push(g_ln, line.new(bar_index - i_s1_len, s1_vah, bar_index, s1_vah,
+                         color=color.new(i_s1_col, 65), width=1, style=line.style_dotted))
+                    array.push(g_ln, line.new(bar_index - i_s1_len, s1_val, bar_index, s1_val,
+                         color=color.new(i_s1_col, 65), width=1, style=line.style_dotted))
+                // Label
+                array.push(g_lb, label.new(s1_r, ph1,
+                     text="S1 · " + str.tostring(i_s1_len) + "b",
+                     color=color.new(i_s1_col, 30), textcolor=color.white,
+                     style=label.style_label_down, size=size.small))
 
     // ── STRATUM 2 — MEDIUM ────────────────────────────────────────────────────
     if i_s2_on and bar_index >= i_s2_len
@@ -261,46 +264,46 @@ if barstate.islast
         avg2 = array.sum(v2) / i_buckets
 
         if mx2 > 0
-            for b = 0 to i_buckets - 1
-                tv   = array.get(v2, b)
-                bul  = array.get(b2, b)
-                ber  = array.get(r2, b)
-                p_lo = array.get(p2, b)
-                p_hi = p_lo + bsz2
-                bw   = int(tv / mx2 * i_width)
-                x_l  = s2_r - bw
-                tot  = bul + ber
-                dr   = tot > 0.0 ? bul / tot : 0.5
-                is_l = not COMPACT and avg2 > 0 and tv < avg2 * 0.35
-                fc   = is_l ? i_lvn_col :
-                       color.from_gradient(dr, 0.0, 1.0,
-                            color.new(#FF3333, color.t(i_s2_col)),
-                            color.new(#00CC55, color.t(i_s2_col)))
-                bc   = is_l ? color.new(#FFFFFF, 20) : color.new(i_s2_col, 85)
-                array.push(g_bx, box.new(x_l, p_hi, s2_r, p_lo,
-                     bgcolor=fc, border_color=bc, border_width=is_l ? 2 : 1))
-
             poc2_i = f_poc(v2, i_buckets)
             s2_poc := array.get(p2, poc2_i) + bsz2 * 0.5
             [va2_lo, va2_hi] = f_va(v2, poc2_i, i_buckets)
             s2_vah := array.get(p2, va2_hi) + bsz2
             s2_val := array.get(p2, va2_lo)
 
-            array.push(g_ln, line.new(s2_r - i_width, s2_poc, s2_r, s2_poc,
-                 color=i_poc_col, width=2, style=line.style_dotted))
-            array.push(g_bx, box.new(s2_r - i_width, s2_vah, s2_r, s2_val,
-                 bgcolor=color.new(i_s2_col, 88), border_color=color.new(i_s2_col, 80)))
-            if not COMPACT
-                array.push(g_ln, line.new(bar_index - i_s2_len, s2_poc, bar_index, s2_poc,
-                     color=color.new(i_s2_col, 50), width=1, style=line.style_dashed))
-                array.push(g_ln, line.new(bar_index - i_s2_len, s2_vah, bar_index, s2_vah,
-                     color=color.new(i_s2_col, 65), width=1, style=line.style_dotted))
-                array.push(g_ln, line.new(bar_index - i_s2_len, s2_val, bar_index, s2_val,
-                     color=color.new(i_s2_col, 65), width=1, style=line.style_dotted))
-            array.push(g_lb, label.new(s2_r, ph2,
-                 text="S2 · " + str.tostring(i_s2_len) + "b",
-                 color=color.new(i_s2_col, 30), textcolor=color.white,
-                 style=label.style_label_down, size=size.small))
+            if i_show_profiles
+                for b = 0 to i_buckets - 1
+                    tv   = array.get(v2, b)
+                    bul  = array.get(b2, b)
+                    ber  = array.get(r2, b)
+                    p_lo = array.get(p2, b)
+                    p_hi = p_lo + bsz2
+                    bw   = int(tv / mx2 * i_width)
+                    x_l  = s2_r - bw
+                    tot  = bul + ber
+                    dr   = tot > 0.0 ? bul / tot : 0.5
+                    is_l = not COMPACT and avg2 > 0 and tv < avg2 * 0.35
+                    fc   = is_l ? i_lvn_col :
+                           color.from_gradient(dr, 0.0, 1.0,
+                                color.new(#FF3333, color.t(i_s2_col)),
+                                color.new(#00CC55, color.t(i_s2_col)))
+                    bc   = is_l ? color.new(#FFFFFF, 20) : color.new(i_s2_col, 85)
+                    array.push(g_bx, box.new(x_l, p_hi, s2_r, p_lo,
+                         bgcolor=fc, border_color=bc, border_width=is_l ? 2 : 1))
+                array.push(g_ln, line.new(s2_r - i_width, s2_poc, s2_r, s2_poc,
+                     color=i_poc_col, width=2, style=line.style_dotted))
+                array.push(g_bx, box.new(s2_r - i_width, s2_vah, s2_r, s2_val,
+                     bgcolor=color.new(i_s2_col, 88), border_color=color.new(i_s2_col, 80)))
+                if not COMPACT
+                    array.push(g_ln, line.new(bar_index - i_s2_len, s2_poc, bar_index, s2_poc,
+                         color=color.new(i_s2_col, 50), width=1, style=line.style_dashed))
+                    array.push(g_ln, line.new(bar_index - i_s2_len, s2_vah, bar_index, s2_vah,
+                         color=color.new(i_s2_col, 65), width=1, style=line.style_dotted))
+                    array.push(g_ln, line.new(bar_index - i_s2_len, s2_val, bar_index, s2_val,
+                         color=color.new(i_s2_col, 65), width=1, style=line.style_dotted))
+                array.push(g_lb, label.new(s2_r, ph2,
+                     text="S2 · " + str.tostring(i_s2_len) + "b",
+                     color=color.new(i_s2_col, 30), textcolor=color.white,
+                     style=label.style_label_down, size=size.small))
 
     // ── STRATUM 3 — LONG / MACRO ──────────────────────────────────────────────
     if i_s3_on and bar_index >= i_s3_len
@@ -309,46 +312,46 @@ if barstate.islast
         avg3 = array.sum(v3) / i_buckets
 
         if mx3 > 0
-            for b = 0 to i_buckets - 1
-                tv   = array.get(v3, b)
-                bul  = array.get(b3, b)
-                ber  = array.get(r3, b)
-                p_lo = array.get(p3, b)
-                p_hi = p_lo + bsz3
-                bw   = int(tv / mx3 * i_width)
-                x_l  = s3_r - bw
-                tot  = bul + ber
-                dr   = tot > 0.0 ? bul / tot : 0.5
-                is_l = not COMPACT and avg3 > 0 and tv < avg3 * 0.35
-                fc   = is_l ? i_lvn_col :
-                       color.from_gradient(dr, 0.0, 1.0,
-                            color.new(#FF3333, color.t(i_s3_col)),
-                            color.new(#00CC55, color.t(i_s3_col)))
-                bc   = is_l ? color.new(#FFFFFF, 20) : color.new(i_s3_col, 85)
-                array.push(g_bx, box.new(x_l, p_hi, s3_r, p_lo,
-                     bgcolor=fc, border_color=bc, border_width=is_l ? 2 : 1))
-
             poc3_i = f_poc(v3, i_buckets)
             s3_poc := array.get(p3, poc3_i) + bsz3 * 0.5
             [va3_lo, va3_hi] = f_va(v3, poc3_i, i_buckets)
             s3_vah := array.get(p3, va3_hi) + bsz3
             s3_val := array.get(p3, va3_lo)
 
-            array.push(g_ln, line.new(s3_r - i_width, s3_poc, s3_r, s3_poc,
-                 color=i_poc_col, width=2, style=line.style_dotted))
-            array.push(g_bx, box.new(s3_r - i_width, s3_vah, s3_r, s3_val,
-                 bgcolor=color.new(i_s3_col, 88), border_color=color.new(i_s3_col, 80)))
-            if not COMPACT
-                array.push(g_ln, line.new(bar_index - i_s3_len, s3_poc, bar_index, s3_poc,
-                     color=color.new(i_s3_col, 50), width=1, style=line.style_dashed))
-                array.push(g_ln, line.new(bar_index - i_s3_len, s3_vah, bar_index, s3_vah,
-                     color=color.new(i_s3_col, 65), width=1, style=line.style_dotted))
-                array.push(g_ln, line.new(bar_index - i_s3_len, s3_val, bar_index, s3_val,
-                     color=color.new(i_s3_col, 65), width=1, style=line.style_dotted))
-            array.push(g_lb, label.new(s3_r, ph3,
-                 text="S3 · " + str.tostring(i_s3_len) + "b",
-                 color=color.new(i_s3_col, 30), textcolor=color.white,
-                 style=label.style_label_down, size=size.small))
+            if i_show_profiles
+                for b = 0 to i_buckets - 1
+                    tv   = array.get(v3, b)
+                    bul  = array.get(b3, b)
+                    ber  = array.get(r3, b)
+                    p_lo = array.get(p3, b)
+                    p_hi = p_lo + bsz3
+                    bw   = int(tv / mx3 * i_width)
+                    x_l  = s3_r - bw
+                    tot  = bul + ber
+                    dr   = tot > 0.0 ? bul / tot : 0.5
+                    is_l = not COMPACT and avg3 > 0 and tv < avg3 * 0.35
+                    fc   = is_l ? i_lvn_col :
+                           color.from_gradient(dr, 0.0, 1.0,
+                                color.new(#FF3333, color.t(i_s3_col)),
+                                color.new(#00CC55, color.t(i_s3_col)))
+                    bc   = is_l ? color.new(#FFFFFF, 20) : color.new(i_s3_col, 85)
+                    array.push(g_bx, box.new(x_l, p_hi, s3_r, p_lo,
+                         bgcolor=fc, border_color=bc, border_width=is_l ? 2 : 1))
+                array.push(g_ln, line.new(s3_r - i_width, s3_poc, s3_r, s3_poc,
+                     color=i_poc_col, width=2, style=line.style_dotted))
+                array.push(g_bx, box.new(s3_r - i_width, s3_vah, s3_r, s3_val,
+                     bgcolor=color.new(i_s3_col, 88), border_color=color.new(i_s3_col, 80)))
+                if not COMPACT
+                    array.push(g_ln, line.new(bar_index - i_s3_len, s3_poc, bar_index, s3_poc,
+                         color=color.new(i_s3_col, 50), width=1, style=line.style_dashed))
+                    array.push(g_ln, line.new(bar_index - i_s3_len, s3_vah, bar_index, s3_vah,
+                         color=color.new(i_s3_col, 65), width=1, style=line.style_dotted))
+                    array.push(g_ln, line.new(bar_index - i_s3_len, s3_val, bar_index, s3_val,
+                         color=color.new(i_s3_col, 65), width=1, style=line.style_dotted))
+                array.push(g_lb, label.new(s3_r, ph3,
+                     text="S3 · " + str.tostring(i_s3_len) + "b",
+                     color=color.new(i_s3_col, 30), textcolor=color.white,
+                     style=label.style_label_down, size=size.small))
 
     // ── RESONANCE ZONE ────────────────────────────────────────────────────────
     if not na(s1_poc) and not na(s2_poc)
@@ -366,7 +369,7 @@ if barstate.islast
                  style=label.style_label_left, size=size.small))
 
     // ── POC MIGRATION SIGNAL ──────────────────────────────────────────────────
-    if not na(s1_poc) and not na(s2_poc)
+    if i_show_cycle and not na(s1_poc) and not na(s2_poc)
         up     = s1_poc > s2_poc
         dn     = s1_poc < s2_poc
         regime := up ? "⬆ ACCUM" : dn ? "⬇ DISTR" : "↔ ROTAT"
@@ -379,7 +382,9 @@ if barstate.islast
         // Always draw S2→S1 arrow
         array.push(g_ln, line.new(s2_r, s2_poc, s1_r, s1_poc,
              color=mc, width=2, style=line.style_arrow_right))
-        array.push(g_lb, label.new(s1_r + 2, s1_poc,
+        // Place label past the rightmost active profile so it's never hidden
+        rx = i_s3_on and not na(s3_poc) ? s3_r : s2_r
+        array.push(g_lb, label.new(rx + 2, s1_poc,
              text=regime, color=mc, textcolor=mtc,
              style=label.style_label_left, size=size.normal))
 
