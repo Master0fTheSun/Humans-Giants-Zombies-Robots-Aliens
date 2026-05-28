@@ -46,9 +46,19 @@ def render_contract_card(contract: dict):
         bias_hint = ("expects higher prices" if "Long" in contract["bias"]
                      else "expects lower prices" if "Short" in contract["bias"]
                      else "wait for direction")
+        _headwinds = contract.get("macro_headwinds", [])
+        _tailwinds = contract.get("macro_tailwinds", [])
+        _macro_html = ""
+        for hw in _headwinds[:2]:
+            _lbl = hw.split("—")[0].strip() if "—" in hw else hw
+            _macro_html += f'<br><span style="color:#e74c3c;font-size:0.72em;">⬇ {_lbl}</span>'
+        for tw in _tailwinds[:1]:
+            _lbl = tw.split("—")[0].strip() if "—" in tw else tw
+            _macro_html += f'<br><span style="color:#2ecc71;font-size:0.72em;">⬆ {_lbl}</span>'
         st.markdown(
             f'<span style="color:{bias_color};font-weight:700;">{contract["bias"]}</span>'
-            f'<br><span style="color:#95a5a6;font-size:0.75em;">{bias_hint}</span>',
+            f'<br><span style="color:#95a5a6;font-size:0.75em;">{bias_hint}</span>'
+            f'{_macro_html}',
             unsafe_allow_html=True,
         )
     with b2:

@@ -280,7 +280,7 @@ def _build_key_levels(price, prior_high, prior_low, sess_high, sess_low, is_crud
     return resistance[:3], support[:3]
 
 
-def _generate_thesis(symbol: str, d: dict):
+def _generate_thesis(symbol: str, d: dict, macro: dict | None = None):
     price  = d["current_price"]
     vwap   = d["vwap"] or price
     change = d["change"]
@@ -311,11 +311,59 @@ def _generate_thesis(symbol: str, d: dict):
     inv_l   = fmt(sl)
     inv_s   = fmt(sh)
 
+    # ── Macro interdependency signals ─────────────────────────────────────────
+    _m        = macro or {}
+    vix       = float(_m.get("vix")              or 0)
+    dxy_ch    = float(_m.get("dollar_change")    or 0)
+    yield_ch  = float(_m.get("ten_year_change")  or 0)
+    fed       = _m.get("fed_stance", "Unknown")
+    is_crude  = symbol == "MCL"
+
+    headwinds: list[str] = []
+    tailwinds: list[str] = []
+
+    if is_crude:
+        # DXY inverse relationship — strong dollar compresses crude
+        if dxy_ch >= 0.15:
+            headwinds.append(f"DXY +{dxy_ch:.2f} — rising dollar pressures crude pricing")
+        elif dxy_ch <= -0.15:
+            tailwinds.append(f"DXY {dxy_ch:.2f} — weak dollar supports crude demand")
+        # VIX regime — risk-off selling hits commodities
+        if vix > 25:
+            headwinds.append(f"VIX {vix:.1f} — risk-off environment, commodity selling likely")
+        elif vix > 18:
+            headwinds.append(f"VIX {vix:.1f} — elevated uncertainty, watch for risk-off shift")
+    else:
+        # VIX fear regime — high VIX = equity headwind
+        if vix > 25:
+            headwinds.append(f"VIX {vix:.1f} — extreme fear, equity momentum under pressure")
+        elif vix > 20:
+            headwinds.append(f"VIX {vix:.1f} — above-average fear, watch for volatility spikes")
+        # 10Y yield direction — rising rates compress equity multiples
+        if yield_ch >= 0.05:
+            headwinds.append(f"10Y yield +{yield_ch:.2f}% — rising rates compress equity valuations")
+        elif yield_ch <= -0.05:
+            tailwinds.append(f"10Y yield {yield_ch:.2f}% — falling rates support equity multiples")
+        # Fed hawkish stance
+        if fed == "Hawkish":
+            headwinds.append("Hawkish Fed — rate-hike cycle is a headwind for equities")
+        # Strong dollar hurts S&P 500 multinational earnings
+        if dxy_ch >= 0.20:
+            headwinds.append(f"DXY +{dxy_ch:.2f} — strong dollar pressures multinational earnings")
+
     thesis = (
         f"{name} is {gap_dir} {fmt(abs(change))} from prior close ({fmt(d['prev_close'])}). "
         f"Price is {vwap_s} VWAP ({fmt(vwap)}), session range {fmt(sl)}–{fmt(sh)} "
         f"({fmt(sr)} vs ATR {fmt(atr)}). Bias: {bias}."
     )
+    # Append one-sentence macro context when present
+    if headwinds:
+        _note = headwinds[0].split("—")[1].strip() if "—" in headwinds[0] else headwinds[0]
+        thesis += f" Macro headwind: {_note}."
+    elif tailwinds:
+        _note = tailwinds[0].split("—")[1].strip() if "—" in tailwinds[0] else tailwinds[0]
+        thesis += f" Macro tailwind: {_note}."
+
     bull = (f"Hold {vwap_s} VWAP ({fmt(vwap)}) and accept above {fmt(sh)}. "
             f"Target: prior day high {fmt(ph)}, extension toward {t_bull}.")
     bear = (f"Fail to hold VWAP ({fmt(vwap)}) and break {fmt(sl)}. "
@@ -335,14 +383,15 @@ def _generate_thesis(symbol: str, d: dict):
     inv_level = float(inv_l) if bias == "Long" else float(inv_s) if bias == "Short" else float(sl)
     risk      = "High" if vol == "High" else "Medium"
 
-    return trend, bias, vol, setup, thesis, bull, bear, plan, watch, inv_level, risk
+    return trend, bias, vol, setup, thesis, bull, bear, plan, watch, inv_level, risk, headwinds, tailwinds
 
 
 # ---------------------------------------------------------------------------
 # Per-contract fetch
 # ---------------------------------------------------------------------------
 
-def _fetch_contract(yf_symbol: str, display_symbol: str, display_name: str) -> dict:
+def _fetch_contract(yf_symbol: str, display_symbol: str, display_name: str,
+                    macro: dict | None = None) -> dict:
     decimals = 2
     ticker   = yf.Ticker(yf_symbol)
     daily    = ticker.history(period="15d", interval="1d")
@@ -412,27 +461,31 @@ def _fetch_contract(yf_symbol: str, display_symbol: str, display_name: str) -> d
     }
 
     (trend, bias, vol, setup, thesis, bull, bear,
-     plan, watch, inv_level, risk) = _generate_thesis(display_symbol, base)
+     plan, watch, inv_level, risk,
+     headwinds, tailwinds) = _generate_thesis(display_symbol, base, macro)
 
     risk_reasons = []
     if vol == "High":
         risk_reasons.append(f"Elevated volatility — range {round(sess_high - sess_low, 2)} vs ATR {atr}")
     if abs(change) > atr * 0.4:
         risk_reasons.append(f"{gap} of {abs(change):.2f} — gap fade risk")
+    risk_reasons.extend(headwinds)   # macro headwinds surface as risk reasons
 
     base.update({
-        "trend":          trend,
-        "bias":           bias,
-        "volatility":     vol,
-        "setup_type":     setup,
-        "thesis":         thesis,
+        "trend":            trend,
+        "bias":             bias,
+        "volatility":       vol,
+        "setup_type":       setup,
+        "thesis":           thesis,
         "bullish_scenario": bull,
         "bearish_scenario": bear,
-        "trade_plan":     plan,
-        "watch_next_open": watch,
-        "invalidation":   inv_level,
-        "risk_level":     risk,
-        "risk_reasons":   risk_reasons or ["Standard market risk — monitor catalysts"],
+        "trade_plan":       plan,
+        "watch_next_open":  watch,
+        "invalidation":     inv_level,
+        "risk_level":       risk,
+        "risk_reasons":     risk_reasons or ["Standard market risk — monitor catalysts"],
+        "macro_headwinds":  headwinds,
+        "macro_tailwinds":  tailwinds,
     })
     return base
 
@@ -550,12 +603,24 @@ def get_yfinance_data() -> dict:
     errors = []
     contracts = {}
 
+    # Fetch macro first so interdependency signals are available during contract bias calculation
+    try:
+        macro = _fetch_macro()
+    except Exception as e:
+        errors.append(f"macro: {e}")
+        macro = {
+            "headline_risk": "Unknown", "fed_stance": "Unknown",
+            "equity_trend": "Unknown", "dollar_index": 0, "dollar_change": 0,
+            "vix": 0, "vix_change": 0, "ten_year_yield": 0, "ten_year_change": 0,
+            "economic_events": [],
+        }
+
     for yf_sym, disp_sym, disp_name in [
         ("CL=F", "MCL", "Micro Crude Oil"),
         ("ES=F", "MES", "Micro E-mini S&P 500"),
     ]:
         try:
-            contracts[disp_sym] = _fetch_contract(yf_sym, disp_sym, disp_name)
+            contracts[disp_sym] = _fetch_contract(yf_sym, disp_sym, disp_name, macro=macro)
             # Cache every successful fetch so we can use it if yfinance fails later
             st.session_state[f"_last_good_{disp_sym}"] = {
                 "data": contracts[disp_sym],
@@ -592,17 +657,6 @@ def get_yfinance_data() -> dict:
                 # Last resort: static mock data
                 contracts[disp_sym] = _mock["contracts"][disp_sym]
                 errors.append(f"{disp_sym}: {err_msg}")
-
-    try:
-        macro = _fetch_macro()
-    except Exception as e:
-        errors.append(f"macro: {e}")
-        macro = {
-            "headline_risk": "Unknown", "fed_stance": "Unknown",
-            "equity_trend": "Unknown", "dollar_index": 0, "dollar_change": 0,
-            "vix": 0, "vix_change": 0, "ten_year_yield": 0, "ten_year_change": 0,
-            "economic_events": [],
-        }
 
     try:
         news = _fetch_news()
